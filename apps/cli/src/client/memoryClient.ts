@@ -1,4 +1,5 @@
 export type MemoryType = "fact" | "decision" | "bug" | "solution" | "pattern";
+export type RetrievalProfile = "short" | "normal" | "deep";
 
 export interface MemoryPayload {
   type: MemoryType;
@@ -13,6 +14,8 @@ export interface MemoryPayload {
   source?: string;
   project?: string;
 }
+
+export type MemoryUpdatePayload = Partial<MemoryPayload>;
 
 export interface MemoryEntry extends Required<Omit<MemoryPayload, "project">> {
   id: string;
@@ -50,15 +53,39 @@ export class MemoryClient {
     });
   }
 
-  async query(query: string, limit = 10, path?: string): Promise<SearchResult[]> {
-    const params = new URLSearchParams({ query, limit: String(limit) });
+  async update(id: string, payload: MemoryUpdatePayload): Promise<MemoryEntry> {
+    return this.request(`/memory/${encodeURIComponent(id)}`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    });
+  }
+
+  async get(id: string): Promise<MemoryEntry> {
+    return this.request(`/memory/${encodeURIComponent(id)}`);
+  }
+
+  async query(
+    query: string,
+    limit?: number,
+    path?: string,
+    after?: string,
+    before?: string,
+    profile?: RetrievalProfile,
+  ): Promise<SearchResult[]> {
+    const params = new URLSearchParams({ query });
+    if (limit) params.set("limit", String(limit));
     if (path) params.set("path", path);
+    if (after) params.set("after", after);
+    if (before) params.set("before", before);
+    if (profile) params.set("profile", profile);
     const response = await this.request<{ results: SearchResult[] }>(`/memory/search?${params}`);
     return response.results;
   }
 
-  async inject(query: string, limit = 5): Promise<string> {
-    const params = new URLSearchParams({ query, limit: String(limit) });
+  async inject(query: string, limit?: number, profile?: RetrievalProfile): Promise<string> {
+    const params = new URLSearchParams({ query });
+    if (limit) params.set("limit", String(limit));
+    if (profile) params.set("profile", profile);
     const response = await this.request<{ additional_context: string }>(`/memory/inject?${params}`);
     return response.additional_context;
   }

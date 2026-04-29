@@ -6,6 +6,7 @@ from app.main import app
 from app.core.models import MemoryCreate
 from app.routes import memory
 from app.storage.sqlite import MemoryStore
+from app.storage.vector import ChromaVectorStore, PgVectorStore, create_vector_store
 
 
 def test_memory_lifecycle(tmp_path, monkeypatch):
@@ -105,6 +106,59 @@ def test_memory_history_records_create_and_delete(tmp_path):
     assert "Audit memory changes" in exported
 
 
+def test_memory_update_endpoint_records_auditable_version(tmp_path, monkeypatch):
+    store = MemoryStore(
+        db_path=tmp_path / "db" / "codex-mem.sqlite3",
+        codex_dir=tmp_path / ".codex",
+        default_project="tests",
+    )
+    monkeypatch.setattr(memory, "get_store", lambda: store)
+
+    client = TestClient(app)
+    created = client.post(
+        "/memory",
+        json={
+            "type": "fact",
+            "title": "Ranking is keyword only",
+            "context": "Initial implementation note.",
+            "resolution": "Replace later.",
+            "confidence": 0.5,
+            "tags": ["ranking"],
+            "source": "test",
+            "project": "tests",
+        },
+    )
+    assert created.status_code == 200
+    memory_id = created.json()["id"]
+
+    updated = client.patch(
+        f"/memory/{memory_id}",
+        json={
+            "type": "decision",
+            "title": "Ranking uses hybrid scoring",
+            "resolution": "Combine keyword, recency, confidence, importance, and usage signals.",
+            "confidence": 0.9,
+            "importance": 0.8,
+            "tags": ["ranking", "audit"],
+        },
+    )
+
+    assert updated.status_code == 200
+    body = updated.json()
+    assert body["id"] == memory_id
+    assert body["type"] == "decision"
+    assert body["title"] == "Ranking uses hybrid scoring"
+    assert body["tags"] == ["ranking", "audit"]
+
+    history = client.get("/memory/history", params={"memory_id": memory_id})
+    assert history.status_code == 200
+    assert [item["action"] for item in history.json()] == ["update", "create"]
+    assert [item["version"] for item in history.json()] == [2, 1]
+
+    exported = json.loads((tmp_path / ".codex" / "INDEX.json").read_text(encoding="utf-8"))
+    assert exported[0]["title"] == "Ranking uses hybrid scoring"
+
+
 def test_conflicting_memory_uses_latest_wins_policy(tmp_path):
     store = MemoryStore(
         db_path=tmp_path / "db" / "codex-mem.sqlite3",
@@ -196,3 +250,215 @@ def test_file_path_scope_filters_search_and_limits_conflicts(tmp_path):
     exported_paths = {entry["id"]: entry["file_paths"] for entry in exported}
     assert exported_paths[api_entry.id] == ["apps/api/app/routes/memory.py"]
     assert exported_paths[cli_entry.id] == ["apps/cli/src/commands/remember.ts"]
+
+
+def test_search_filters_by_created_date_range(tmp_path, monkeypatch):
+    store = MemoryStore(
+        db_path=tmp_path / "db" / "codex-mem.sqlite3",
+        codex_dir=tmp_path / ".codex",
+        default_project="tests",
+    )
+    monkeypatch.setattr(memory, "get_store", lambda: store)
+
+    old_entry = store.store(
+        MemoryCreate(
+            type="fact",
+            title="Old ranking note",
+            context="Ranking started with keywords.",
+            source="test",
+        )
+    )
+    new_entry = store.store(
+        MemoryCreate(
+            type="fact",
+            title="New ranking note",
+            context="Ranking now includes recency.",
+            source="test",
+        )
+    )
+    with store._connect() as conn:
+        conn.execute(
+            "UPDATE memories SET timestamp = ? WHERE id = ?",
+            ("2026-01-01T00:00:00+00:00", old_entry.id),
+        )
+        conn.execute(
+            "UPDATE memories SET timestamp = ? WHERE id = ?",
+            ("2026-04-01T00:00:00+00:00", new_entry.id),
+        )
+
+    client = TestClient(app)
+    response = client.get(
+        "/memory/search",
+        params={
+            "query": "ranking",
+            "after": "2026-03-01T00:00:00Z",
+            "before": "2026-04-30T00:00:00Z",
+        },
+    )
+
+    assert response.status_code == 200
+    assert [result["entry"]["id"] for result in response.json()["results"]] == [new_entry.id]
+
+    invalid = client.get("/memory/search", params={"after": "not-a-date"})
+    assert invalid.status_code == 400
+
+
+def test_search_and_injection_support_retrieval_profiles(tmp_path, monkeypatch):
+    store = MemoryStore(
+        db_path=tmp_path / "db" / "codex-mem.sqlite3",
+        codex_dir=tmp_path / ".codex",
+        default_project="tests",
+    )
+    monkeypatch.setattr(memory, "get_store", lambda: store)
+
+    for index in range(5):
+        store.store(
+            MemoryCreate(
+                type="fact",
+                title=f"Profile memory {index}",
+                context="Shared profile query text.",
+                source="test",
+            )
+        )
+
+    client = TestClient(app)
+    short = client.get("/memory/search", params={"query": "profile", "profile": "short"})
+    assert short.status_code == 200
+    assert len(short.json()["results"]) == 3
+
+    explicit_limit = client.get(
+        "/memory/search",
+        params={"query": "profile", "profile": "deep", "limit": 4},
+    )
+    assert explicit_limit.status_code == 200
+    assert len(explicit_limit.json()["results"]) == 4
+
+    injection = client.get("/memory/inject", params={"query": "profile", "profile": "short"})
+    assert injection.status_code == 200
+    assert injection.json()["trace"]["requested_limit"] == 3
+
+
+def test_search_uses_semantic_embedding_similarity(tmp_path):
+    store = MemoryStore(
+        db_path=tmp_path / "db" / "codex-mem.sqlite3",
+        codex_dir=tmp_path / ".codex",
+        default_project="tests",
+    )
+    entry = store.store(
+        MemoryCreate(
+            type="bug",
+            title="Runtime error capture",
+            context="Tool output exceptions should be stored for later diagnosis.",
+            resolution="Record failures with source and command context.",
+            source="test",
+        )
+    )
+
+    results = store.search(query="failure diagnosis", limit=3, track_usage=False)
+
+    assert results[0].entry.id == entry.id
+    assert "semantic embedding similarity" in results[0].reason
+
+
+def test_memory_store_uses_vector_store_adapter(tmp_path):
+    class FakeVectorStore:
+        def __init__(self):
+            self.embedded_texts = []
+
+        def embed(self, text: str) -> list[float]:
+            self.embedded_texts.append(text)
+            if "query" in text:
+                return [1.0, 0.0]
+            return [0.9, 0.1]
+
+        def similarity(self, query_vector: list[float], entry_vector: list[float]) -> float:
+            return 0.95
+
+    vector_store = FakeVectorStore()
+    store = MemoryStore(
+        db_path=tmp_path / "db" / "codex-mem.sqlite3",
+        codex_dir=tmp_path / ".codex",
+        default_project="tests",
+        vector_store=vector_store,
+    )
+    entry = store.store(
+        MemoryCreate(
+            type="fact",
+            title="Adapter-backed memory",
+            context="Stored through an injected vector store.",
+            source="test",
+        )
+    )
+
+    results = store.search(query="query with no lexical overlap", track_usage=False)
+
+    assert results[0].entry.id == entry.id
+    assert any("Adapter-backed memory" in text for text in vector_store.embedded_texts)
+    assert vector_store.embedded_texts[-1] == "query with no lexical overlap"
+
+
+def test_optional_vector_backends_are_selectable():
+    chroma = create_vector_store("chroma", chroma_url="http://chroma.local")
+    pgvector = create_vector_store("pgvector", pgvector_dsn="postgresql://memory")
+
+    assert isinstance(chroma, ChromaVectorStore)
+    assert chroma.url == "http://chroma.local"
+    assert isinstance(pgvector, PgVectorStore)
+    assert pgvector.dsn == "postgresql://memory"
+
+
+def test_injection_summarizes_memories_when_budget_is_tight(tmp_path):
+    store = MemoryStore(
+        db_path=tmp_path / "db" / "codex-mem.sqlite3",
+        codex_dir=tmp_path / ".codex",
+        default_project="tests",
+    )
+    for index in range(3):
+        store.store(
+            MemoryCreate(
+                type="solution",
+                title=f"Budget memory {index}",
+                context=("budget " + "detail " * 120).strip(),
+                resolution=("Use a compact summary when retrieved memory exceeds budget. " * 20).strip(),
+                source="test",
+            )
+        )
+
+    additional_context, _results, trace = store.inject_context(query="budget", limit=3, token_budget=100)
+
+    assert "# Summarized Memory" in additional_context
+    assert "Use a compact summary" in additional_context
+    assert trace.injected_count >= 1
+    assert len(additional_context) <= 450
+
+
+def test_progressive_disclosure_index_and_get_by_id(tmp_path, monkeypatch):
+    store = MemoryStore(
+        db_path=tmp_path / "db" / "codex-mem.sqlite3",
+        codex_dir=tmp_path / ".codex",
+        default_project="tests",
+    )
+    monkeypatch.setattr(memory, "get_store", lambda: store)
+    entry = store.store(
+        MemoryCreate(
+            type="decision",
+            title="Use compact index first",
+            context="Progressive disclosure should keep initial retrieval small.",
+            resolution="Return compact search results first and fetch full details by ID.",
+            tags=["retrieval"],
+            source="test",
+        )
+    )
+
+    client = TestClient(app)
+    index = client.get("/memory/index", params={"query": "compact retrieval"})
+    assert index.status_code == 200
+    compact = index.json()["results"][0]
+    assert compact["id"] == entry.id
+    assert compact["title"] == "Use compact index first"
+    assert "context" not in compact
+    assert "resolution" not in compact
+
+    full = client.get(f"/memory/{entry.id}")
+    assert full.status_code == 200
+    assert full.json()["context"] == "Progressive disclosure should keep initial retrieval small."

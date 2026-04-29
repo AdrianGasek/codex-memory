@@ -36,6 +36,18 @@
           }
         ]
       }
+    ],
+    "PostToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python plugins/codex-mem/scripts/hook_memory.py post-tool-use",
+            "timeout": 5,
+            "statusMessage": "Codex-Mem tool-result capture"
+          }
+        ]
+      }
     ]
   }
 }

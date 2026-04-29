@@ -109,3 +109,30 @@ Codex-Mem needs auditable memory changes without depending on future edit suppor
 ### Resolution
 
 Create memory_history with per-memory versions and record create/delete snapshots transactionally; export .codex/HISTORY.json and expose GET /memory/history.
+
+## Roadmap tasks are completed one checkbox at a time
+
+- id: `mem_93b00f5ee4c7`
+- type: `decision`
+- confidence: `0.95`
+- importance: `0.80`
+- pinned: `False`
+- file_paths: `.codex/ROADMAP.md, AGENTS.md`
+- source: `codex-loop`
+- project: `codex-mem`
+- timestamp: `2026-04-29T14:45:27.381596+00:00`
+- status: `active`
+- superseded_by: ``
+- conflict_ids: ``
+- retrieved_count: `0`
+- injected_count: `0`
+- last_used_timestamp: ``
+- tags: `roadmap, agent-flow`
+
+### Context
+
+The repository roadmap is the canonical implementation checklist for Codex-Mem work.
+
+### Resolution
+
+Read .codex/ROADMAP.md and context files before work, complete the first unchecked task only, run smoke validation, then mark that task done.

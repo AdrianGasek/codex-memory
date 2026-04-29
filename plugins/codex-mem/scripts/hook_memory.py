@@ -4,6 +4,7 @@ import json
 import os
 from pathlib import Path
 import re
+import subprocess
 import sys
 import urllib.parse
 import urllib.request
@@ -15,6 +16,16 @@ TOKEN_BUDGET = os.getenv("CODEX_MEM_TOKEN_BUDGET", "1200")
 MIN_CAPTURE_CHARS = 80
 MAX_CAPTURE_ITEMS = 3
 
+WORKED_PATTERNS = [
+    re.compile(r"\b(what worked|worked|passed|succeeded|verified|tests? pass(?:ed)?)\b", re.I),
+    re.compile(r"\b(zadzialalo|powiodlo|przeszly|zweryfikowano)\b", re.I),
+]
+
+FAILED_PATTERNS = [
+    re.compile(r"\b(what failed|failed|failure|error|broke|regression|not able|couldn't|cannot verify)\b", re.I),
+    re.compile(r"\b(nie udalo|blad|awaria|regresja|nie moglem zweryfikowac)\b", re.I),
+]
+
 ACTION_PATTERNS = [
     re.compile(r"\b(add(?:ed)?|implement(?:ed)?|fix(?:ed)?|resolv(?:ed|e)|chang(?:ed|e)|update(?:d)?|wire(?:d)?|verify|verified|test(?:ed)?)\b", re.I),
     re.compile(r"\b(doda(?:łem|no)|zaimplementowa(?:łem|no)|naprawi(?:łem|ono)|rozwi(?:ązałem|ązano)|zmieni(?:łem|ono)|zweryfikowa(?:łem|no)|testy?)\b", re.I),
@@ -24,6 +35,11 @@ LOW_VALUE_PATTERNS = [
     re.compile(r"^\s*(ok|done|gotowe|jasne|pewnie|thanks|dzięki)[.!]?\s*$", re.I),
     re.compile(r"\b(nie udało|nie byłem w stanie|not able|couldn't|cannot verify|nie mogłem zweryfikować)\b", re.I),
 ]
+EXTENDED_LOW_VALUE_PATTERNS = [
+    re.compile(r"\b(i think|maybe|probably|guess|not sure|chyba|moze|prawdopodobnie)\b", re.I),
+    re.compile(r"\b(debug log|temporary log|console\.log|print debugging|scratch)\b", re.I),
+    re.compile(r"\b(created file|edited file|ran command|opened file)\b", re.I),
+]
 
 
 def main() -> None:
@@ -32,6 +48,11 @@ def main() -> None:
 
     if mode == "stop":
         captured = capture_from_stop(payload)
+        print(json.dumps({"continue": True, "suppressOutput": True}))
+        return
+
+    if mode == "post-tool-use":
+        capture_from_tool_result(payload)
         print(json.dumps({"continue": True, "suppressOutput": True}))
         return
 
@@ -90,14 +111,106 @@ def fetch_context(query: str) -> str:
 
 def capture_from_stop(payload: dict) -> int:
     message = latest_assistant_message(payload)
+    captured = capture_from_git_diff(payload)
+    captured += capture_from_latest_commit(payload)
     if not message:
-        return 0
+        return captured
 
-    captured = 0
     for memory in extract_memories(message):
         if post_memory(memory):
             captured += 1
     return captured
+
+
+def capture_from_git_diff(payload: dict) -> int:
+    cwd = payload.get("cwd") or os.getcwd()
+    try:
+        diff = subprocess.run(
+            ["git", "diff", "--stat", "--", ":!data/db", ":!data/vectors"],
+            cwd=str(cwd),
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=3,
+        )
+    except Exception:
+        return 0
+    stat = diff.stdout.strip()
+    if diff.returncode != 0 or not stat:
+        return 0
+    memory = {
+        "type": "fact",
+        "title": "Working tree has code changes",
+        "context": stat[:1200],
+        "resolution": "Captured automatically from git diff --stat after a Codex turn.",
+        "confidence": 0.6,
+        "tags": ["auto-capture", "git-diff"],
+        "source": "git-diff",
+    }
+    return 1 if post_memory(memory) else 0
+
+
+def capture_from_latest_commit(payload: dict) -> int:
+    cwd = payload.get("cwd") or os.getcwd()
+    try:
+        commit = subprocess.run(
+            ["git", "log", "-1", "--pretty=format:%h%n%s%n%b"],
+            cwd=str(cwd),
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=3,
+        )
+    except Exception:
+        return 0
+    text = commit.stdout.strip()
+    if commit.returncode != 0 or not text:
+        return 0
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    if len(lines) < 2:
+        return 0
+    commit_hash, subject = lines[0], lines[1]
+    body = " ".join(lines[2:])
+    memory = {
+        "type": "fact",
+        "title": f"Commit {commit_hash}: {subject}"[:120],
+        "context": (body or subject)[:1200],
+        "resolution": "Captured automatically from the latest git commit.",
+        "confidence": 0.7,
+        "tags": ["auto-capture", "git-commit"],
+        "source": "git-commit",
+    }
+    return 1 if post_memory(memory) else 0
+
+
+def capture_from_tool_result(payload: dict) -> int:
+    failure = tool_failure_text(payload)
+    if not failure:
+        return 0
+
+    memory = {
+        "type": "bug",
+        "title": title_from_text(failure),
+        "context": failure[:1200],
+        "resolution": "Captured automatically from a failed tool or runtime result.",
+        "confidence": 0.7,
+        "tags": ["auto-capture", "tool-error", "failed"],
+        "source": "post-tool-use",
+    }
+    return 1 if post_memory(memory) else 0
+
+
+def tool_failure_text(payload: dict) -> str:
+    tool_name = str(payload.get("tool_name") or payload.get("tool") or "tool").strip()
+    exit_code = payload.get("exit_code")
+    status = str(payload.get("status") or "").lower()
+    error = payload.get("error") or payload.get("stderr") or payload.get("message")
+    output = payload.get("output") or payload.get("stdout") or payload.get("result")
+    text = extract_text(error) or extract_text(output)
+    failed = bool(error) or status in {"error", "failed", "failure"} or (isinstance(exit_code, int) and exit_code != 0)
+    if not failed or not text.strip():
+        return ""
+    return f"{tool_name} failed: {' '.join(text.split())}"
 
 
 def latest_assistant_message(payload: dict) -> str:
@@ -157,11 +270,15 @@ def extract_memories(message: str) -> list[dict]:
 
     candidates = split_candidates(cleaned)
     memories = []
+    seen_candidates = []
     for candidate in candidates:
         if len(candidate) < MIN_CAPTURE_CHARS or is_low_value(candidate):
             continue
-        if not any(pattern.search(candidate) for pattern in ACTION_PATTERNS):
+        if not is_actionable_capture(candidate):
             continue
+        if is_near_duplicate(candidate, seen_candidates):
+            continue
+        seen_candidates.append(candidate)
         memories.append(memory_payload(candidate))
         if len(memories) >= MAX_CAPTURE_ITEMS:
             break
@@ -204,24 +321,74 @@ def split_candidates(message: str) -> list[str]:
 
 
 def is_low_value(text: str) -> bool:
-    return any(pattern.search(text) for pattern in LOW_VALUE_PATTERNS)
+    if any(pattern.search(text) for pattern in FAILED_PATTERNS):
+        return False
+    return any(pattern.search(text) for pattern in LOW_VALUE_PATTERNS + EXTENDED_LOW_VALUE_PATTERNS)
+
+
+def is_actionable_capture(text: str) -> bool:
+    patterns = ACTION_PATTERNS + WORKED_PATTERNS + FAILED_PATTERNS
+    return any(pattern.search(text) for pattern in patterns)
+
+
+def is_near_duplicate(candidate: str, previous: list[str]) -> bool:
+    candidate_tokens = token_set(candidate)
+    if not candidate_tokens:
+        return True
+    for item in previous:
+        tokens = token_set(item)
+        overlap = len(candidate_tokens & tokens)
+        union = len(candidate_tokens | tokens)
+        if union and overlap / union >= 0.7:
+            return True
+    return False
+
+
+def token_set(text: str) -> set[str]:
+    return {token.lower() for token in re.findall(r"[A-Za-z0-9_./:-]{3,}", text)}
 
 
 def memory_payload(text: str) -> dict:
     memory_type = infer_memory_type(text)
-    return {
+    tags = ["auto-capture", "stop-hook"]
+    if any(pattern.search(text) for pattern in WORKED_PATTERNS):
+        tags.append("worked")
+    if any(pattern.search(text) for pattern in FAILED_PATTERNS):
+        tags.append("failed")
+    return normalize_observation({
         "type": memory_type,
         "title": title_from_text(text),
         "context": text[:1200],
-        "resolution": "Captured automatically from the latest assistant response.",
+        "resolution": resolution_from_text(text),
         "confidence": 0.65,
-        "tags": ["auto-capture", "stop-hook"],
+        "tags": tags,
         "source": "stop-hook",
+    })
+
+
+def normalize_observation(memory: dict) -> dict:
+    tags = []
+    for tag in memory.get("tags", []):
+        value = str(tag).strip().lower()
+        if value and value not in tags:
+            tags.append(value)
+    normalized = {
+        "type": memory.get("type") or "fact",
+        "title": title_from_text(str(memory.get("title") or "Auto-captured Codex memory")),
+        "context": " ".join(str(memory.get("context") or "").split())[:1200],
+        "resolution": " ".join(str(memory.get("resolution") or "").split())[:1200],
+        "confidence": float(memory.get("confidence") or 0.6),
+        "tags": tags,
+        "source": str(memory.get("source") or "auto-capture").strip()[:120],
     }
+    normalized["confidence"] = max(0.0, min(normalized["confidence"], 1.0))
+    return normalized
 
 
 def infer_memory_type(text: str) -> str:
     lowered = text.lower()
+    if any(pattern.search(text) for pattern in FAILED_PATTERNS):
+        return "bug"
     if re.search(r"\b(fixed|resolved|naprawi|rozwiąza)\b", lowered):
         return "solution"
     if re.search(r"\b(decided|wybra|decyz)\b", lowered):
@@ -229,6 +396,14 @@ def infer_memory_type(text: str) -> str:
     if re.search(r"\b(pattern|wzorzec|best practice)\b", lowered):
         return "pattern"
     return "solution"
+
+
+def resolution_from_text(text: str) -> str:
+    if any(pattern.search(text) for pattern in FAILED_PATTERNS):
+        return "Captured automatically as a failed approach from the latest assistant response."
+    if any(pattern.search(text) for pattern in WORKED_PATTERNS):
+        return "Captured automatically as a working approach from the latest assistant response."
+    return "Captured automatically from the latest assistant response."
 
 
 def title_from_text(text: str) -> str:

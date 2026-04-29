@@ -103,5 +103,32 @@
     "retrieved_count": 0,
     "injected_count": 0,
     "last_used_timestamp": null
+  },
+  {
+    "type": "decision",
+    "title": "Roadmap tasks are completed one checkbox at a time",
+    "context": "The repository roadmap is the canonical implementation checklist for Codex-Mem work.",
+    "resolution": "Read .codex/ROADMAP.md and context files before work, complete the first unchecked task only, run smoke validation, then mark that task done.",
+    "confidence": 0.95,
+    "importance": 0.8,
+    "pinned": false,
+    "file_paths": [
+      ".codex/ROADMAP.md",
+      "AGENTS.md"
+    ],
+    "tags": [
+      "roadmap",
+      "agent-flow"
+    ],
+    "source": "codex-loop",
+    "project": "codex-mem",
+    "id": "mem_93b00f5ee4c7",
+    "timestamp": "2026-04-29T14:45:27.381596+00:00",
+    "status": "active",
+    "conflict_ids": [],
+    "superseded_by": null,
+    "retrieved_count": 0,
+    "injected_count": 0,
+    "last_used_timestamp": null
   }
 ]

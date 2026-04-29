@@ -1,13 +1,23 @@
-import { MemoryClient } from "../client/memoryClient.js";
+import { MemoryClient, type RetrievalProfile } from "../client/memoryClient.js";
 import { option, parseOptions } from "./args.js";
+
+const profiles = new Set(["short", "normal", "deep"]);
 
 export async function queryCommand(args: string[]): Promise<void> {
   const options = parseOptions(args);
   const query = option(options, "query") || (options.get("_") ?? []).join(" ");
-  const limit = Number(option(options, "limit", "10"));
+  const limitOption = option(options, "limit");
+  const limit = limitOption ? Number(limitOption) : undefined;
+  const profileOption = option(options, "profile");
+  if (profileOption && !profiles.has(profileOption)) {
+    throw new Error('Invalid --profile. Use "short", "normal", or "deep".');
+  }
+  const profile = profileOption as RetrievalProfile | undefined;
   const path = option(options, "path") || undefined;
+  const after = option(options, "after") || undefined;
+  const before = option(options, "before") || undefined;
   const client = new MemoryClient();
-  const results = await client.query(query, limit, path);
+  const results = await client.query(query, limit, path, after, before, profile);
 
   if (results.length === 0) {
     console.log("No memory found.");

@@ -14,10 +14,12 @@ from app.core.models import (
     MemoryCreate,
     MemoryEntry,
     MemoryHistoryEntry,
+    MemoryUpdate,
     SearchResult,
     new_entry,
 )
 from app.core.ranking import rank_memory
+from app.storage.vector import LocalVectorStore, VectorStore
 
 SECRET_PATTERNS = [
     re.compile(r"sk-[A-Za-z0-9_-]{20,}"),
@@ -26,10 +28,17 @@ SECRET_PATTERNS = [
 
 
 class MemoryStore:
-    def __init__(self, db_path: Path, codex_dir: Path, default_project: str) -> None:
+    def __init__(
+        self,
+        db_path: Path,
+        codex_dir: Path,
+        default_project: str,
+        vector_store: VectorStore | None = None,
+    ) -> None:
         self.db_path = db_path
         self.codex_dir = codex_dir
         self.default_project = default_project
+        self.vector_store = vector_store or LocalVectorStore()
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self.codex_dir.mkdir(parents=True, exist_ok=True)
         self._init_db()
@@ -64,7 +73,8 @@ class MemoryStore:
                     retrieved_count INTEGER NOT NULL DEFAULT 0,
                     injected_count INTEGER NOT NULL DEFAULT 0,
                     last_used_timestamp TEXT,
-                    content_hash TEXT NOT NULL UNIQUE
+                    content_hash TEXT NOT NULL UNIQUE,
+                    embedding TEXT NOT NULL DEFAULT '[]'
                 )
                 """
             )
@@ -106,6 +116,7 @@ class MemoryStore:
             self._ensure_column(conn, "status", "TEXT NOT NULL DEFAULT 'active'")
             self._ensure_column(conn, "conflict_ids", "TEXT NOT NULL DEFAULT '[]'")
             self._ensure_column(conn, "superseded_by", "TEXT")
+            self._ensure_column(conn, "embedding", "TEXT NOT NULL DEFAULT '[]'")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_memories_type ON memories(type)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_memories_project ON memories(project)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_memories_status ON memories(status)")
@@ -183,9 +194,9 @@ class MemoryStore:
                     id, type, title, context, resolution, confidence, importance,
                     pinned, file_paths, tags, source, project, timestamp, status,
                     conflict_ids, superseded_by, retrieved_count, injected_count,
-                    last_used_timestamp, content_hash
+                    last_used_timestamp, content_hash, embedding
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     entry.id,
@@ -208,6 +219,7 @@ class MemoryStore:
                     entry.injected_count,
                     entry.last_used_timestamp,
                     content_hash,
+                    json.dumps(self._embedding_for_entry(entry)),
                 ),
             )
             self._record_history(conn, entry, "create")
@@ -224,6 +236,8 @@ class MemoryStore:
         project: str | None = None,
         tags: Iterable[str] | None = None,
         path: str | None = None,
+        created_after: str | None = None,
+        created_before: str | None = None,
         track_usage: bool = True,
     ) -> list[SearchResult]:
         where = []
@@ -234,6 +248,12 @@ class MemoryStore:
         if project:
             where.append("project = ?")
             params.append(project)
+        if created_after:
+            where.append("timestamp >= ?")
+            params.append(self._normalize_timestamp_filter(created_after))
+        if created_before:
+            where.append("timestamp <= ?")
+            params.append(self._normalize_timestamp_filter(created_before))
         where.append("status = ?")
         params.append("active")
 
@@ -245,6 +265,7 @@ class MemoryStore:
 
         requested_tags = {tag.strip().lower() for tag in tags or [] if tag.strip()}
         requested_path = self._normalize_path(path or "")
+        query_embedding = self.vector_store.embed(query) if query.strip() else []
         results: list[SearchResult] = []
 
         with self._connect() as conn:
@@ -257,9 +278,14 @@ class MemoryStore:
             if requested_path and not self._path_matches(entry.file_paths, requested_path):
                 continue
             ranked = rank_memory(entry, query)
-            if query.strip() and not ranked.matched:
+            semantic_score = self._semantic_score(row, entry, query_embedding)
+            if query.strip() and not ranked.matched and semantic_score < 0.25:
                 continue
-            results.append(SearchResult(entry=entry, score=ranked.score, reason=ranked.reason))
+            score = ranked.score + (semantic_score * 2.0)
+            reason = ranked.reason
+            if semantic_score >= 0.25:
+                reason = f"{reason}; semantic embedding similarity"
+            results.append(SearchResult(entry=entry, score=round(score, 6), reason=reason))
 
         results.sort(key=lambda item: (item.score, item.entry.timestamp), reverse=True)
         selected = results[:limit]
@@ -279,6 +305,71 @@ class MemoryStore:
             self.export_markdown()
             self.export_history()
         return deleted
+
+    def get(self, memory_id: str) -> MemoryEntry | None:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM memories WHERE id = ? AND status = 'active'",
+                (memory_id,),
+            ).fetchone()
+        if not row:
+            return None
+        return self._from_row(row)
+
+    def update(self, memory_id: str, payload: MemoryUpdate) -> MemoryEntry | None:
+        updates = payload.model_dump(exclude_unset=True)
+        with self._connect() as conn:
+            existing = conn.execute("SELECT * FROM memories WHERE id = ?", (memory_id,)).fetchone()
+            if not existing:
+                return None
+
+            current = self._from_row(existing)
+            data = current.model_dump()
+            data.update({key: value for key, value in updates.items() if value is not None})
+            if "project" in updates and updates["project"] is None:
+                data["project"] = current.project
+            data["timestamp"] = datetime.now(timezone.utc).isoformat()
+            updated = self._redact(MemoryEntry(**data))
+            content_hash = self._hashable(updated)
+
+            duplicate = conn.execute(
+                "SELECT id FROM memories WHERE content_hash = ? AND id != ?",
+                (content_hash, memory_id),
+            ).fetchone()
+            if duplicate:
+                raise ValueError(f"Updated memory would duplicate {duplicate['id']}")
+
+            conn.execute(
+                """
+                UPDATE memories
+                SET type = ?, title = ?, context = ?, resolution = ?, confidence = ?,
+                    importance = ?, pinned = ?, file_paths = ?, tags = ?, source = ?,
+                    project = ?, timestamp = ?, content_hash = ?, embedding = ?
+                WHERE id = ?
+                """,
+                (
+                    updated.type.value,
+                    updated.title,
+                    updated.context,
+                    updated.resolution,
+                    updated.confidence,
+                    updated.importance,
+                    int(updated.pinned),
+                    json.dumps(updated.file_paths),
+                    json.dumps(updated.tags),
+                    updated.source,
+                    updated.project,
+                    updated.timestamp,
+                    content_hash,
+                    json.dumps(self._embedding_for_entry(updated)),
+                    updated.id,
+                ),
+            )
+            self._record_history(conn, updated, "update")
+
+        self.export_markdown()
+        self.export_history()
+        return updated
 
     def history(self, memory_id: str | None = None, limit: int = 100) -> list[MemoryHistoryEntry]:
         params: list[str | int] = []
@@ -302,6 +393,7 @@ class MemoryStore:
         lines = ["# Relevant Codex-Mem Context", ""]
         budget_chars = max(token_budget * 4, 400)
         injected_results = []
+        summarized = False
         for result in results:
             entry = result.entry
             block = [
@@ -313,7 +405,15 @@ class MemoryStore:
             ]
             candidate = "\n".join(part for part in block if part)
             if len("\n".join(lines)) + len(candidate) > budget_chars:
-                break
+                summary = self._summary_for_result(result)
+                if not summarized and len("\n".join(lines)) + len("\n# Summarized Memory\n") <= budget_chars:
+                    lines.extend(["", "# Summarized Memory"])
+                    summarized = True
+                if len("\n".join(lines)) + len(summary) > budget_chars:
+                    break
+                lines.append(summary)
+                injected_results.append(result)
+                continue
             lines.append(candidate)
             injected_results.append(result)
         self._record_usage(injected_results, retrieved_delta=0, injected_delta=1)
@@ -332,6 +432,14 @@ class MemoryStore:
         if not row:
             return None
         return self._trace_from_row(row)
+
+    def _summary_for_result(self, result: SearchResult) -> str:
+        entry = result.entry
+        source = entry.resolution or entry.context
+        summary = " ".join(source.split())
+        if len(summary) > 140:
+            summary = summary[:137].rstrip() + "..."
+        return f"- [{entry.type.value}] {entry.title}: {summary} ({entry.id}, score={result.score:.2f})"
 
     def export_markdown(self) -> None:
         results = self.search(limit=500, track_usage=False)
@@ -467,6 +575,43 @@ class MemoryStore:
 
     def _normalize_path(self, path: str) -> str:
         return path.strip().replace("\\", "/").strip("/").lower()
+
+    def _normalize_timestamp_filter(self, value: str) -> str:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        return parsed.astimezone(timezone.utc).isoformat()
+
+    def _embedding_for_entry(self, entry: MemoryEntry) -> list[float]:
+        return self.vector_store.embed(
+            " ".join(
+                [
+                    entry.title,
+                    entry.context,
+                    entry.resolution,
+                    " ".join(entry.file_paths),
+                    " ".join(entry.tags),
+                    entry.type.value,
+                    entry.source,
+                ]
+            )
+        )
+
+    def _semantic_score(
+        self,
+        row: sqlite3.Row,
+        entry: MemoryEntry,
+        query_embedding: list[float],
+    ) -> float:
+        if not query_embedding:
+            return 0.0
+        try:
+            entry_embedding = json.loads(row["embedding"])
+        except (IndexError, KeyError, TypeError, json.JSONDecodeError):
+            entry_embedding = []
+        if not entry_embedding:
+            entry_embedding = self._embedding_for_entry(entry)
+        return self.vector_store.similarity(query_embedding, entry_embedding)
 
     def _path_matches(self, file_paths: list[str], requested_path: str) -> bool:
         normalized_paths = [self._normalize_path(path) for path in file_paths]

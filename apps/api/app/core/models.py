@@ -48,6 +48,34 @@ class MemoryCreate(BaseModel):
         return cleaned
 
 
+class MemoryUpdate(BaseModel):
+    type: MemoryType | None = None
+    title: str | None = Field(default=None, min_length=1, max_length=160)
+    context: str | None = Field(default=None, max_length=4000)
+    resolution: str | None = Field(default=None, max_length=4000)
+    confidence: float | None = Field(default=None, ge=0.0, le=1.0)
+    importance: float | None = Field(default=None, ge=0.0, le=1.0)
+    pinned: bool | None = None
+    file_paths: list[str] | None = None
+    tags: list[str] | None = None
+    source: str | None = Field(default=None, max_length=120)
+    project: str | None = Field(default=None, max_length=180)
+
+    @field_validator("tags")
+    @classmethod
+    def clean_tags(cls, tags: list[str] | None) -> list[str] | None:
+        if tags is None:
+            return None
+        return MemoryCreate.clean_tags(tags)
+
+    @field_validator("file_paths")
+    @classmethod
+    def clean_file_paths(cls, file_paths: list[str] | None) -> list[str] | None:
+        if file_paths is None:
+            return None
+        return MemoryCreate.clean_file_paths(file_paths)
+
+
 class MemoryEntry(MemoryCreate):
     id: str
     timestamp: str
@@ -63,7 +91,7 @@ class MemoryHistoryEntry(BaseModel):
     id: str
     memory_id: str
     version: int
-    action: Literal["create", "delete", "supersede"]
+    action: Literal["create", "delete", "supersede", "update"]
     snapshot: MemoryEntry
     source: str
     project: str
@@ -91,6 +119,20 @@ class SearchResult(BaseModel):
 
 class SearchResponse(BaseModel):
     results: list[SearchResult]
+
+
+class CompactMemoryResult(BaseModel):
+    id: str
+    type: MemoryType
+    title: str
+    score: float
+    reason: str = ""
+    tags: list[str] = Field(default_factory=list)
+    file_paths: list[str] = Field(default_factory=list)
+
+
+class CompactIndexResponse(BaseModel):
+    results: list[CompactMemoryResult]
 
 
 class InjectionTraceEntry(BaseModel):

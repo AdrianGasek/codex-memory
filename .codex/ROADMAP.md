@@ -7,9 +7,9 @@ This is the working checklist for turning Codex-Mem into a full "brain" for Code
 ## How To Use This List
 
 - [x] Keep this file in `.codex/ROADMAP.md` as the project control list.
-- [ ] Before starting work, read this file plus `.codex/context/*.md`.
-- [ ] After finishing a feature, mark it `[x]`, add a short note if needed, and run the matching tests.
-- [ ] Store durable implementation decisions through Codex-Mem once auto-capture or manual capture is available.
+- [x] Before starting work, read this file plus `.codex/context/*.md`.
+- [x] After finishing a feature, mark it `[x]`, add a short note if needed, and run the matching tests.
+- [x] Store durable implementation decisions through Codex-Mem once auto-capture or manual capture is available.
 
 ## Current Focus
 
@@ -41,7 +41,7 @@ This is the working checklist for turning Codex-Mem into a full "brain" for Code
 - [x] Add project namespace field.
 - [x] Add file/path scope for memory entries.
 - [x] Add durable history/version table for memory changes.
-- [ ] Add update/edit memory endpoint and CLI command.
+- [x] Add update/edit memory endpoint and CLI command.
 - [x] Add explicit conflict model: conflicting entry links, superseded status, latest-wins policy.
 - [x] Add usage counters: retrieved count, injected count, last used timestamp.
 - [x] Add priority fields: importance, confidence decay, manual pinning.
@@ -53,32 +53,32 @@ This is the working checklist for turning Codex-Mem into a full "brain" for Code
 - [x] Add context injection endpoint.
 - [x] Add basic token-budget-aware trimming.
 - [x] Return ranking score in search responses.
-- [ ] Add date/time filters.
+- [x] Add date/time filters.
 - [x] Extract ranking into a dedicated ranking module.
 - [x] Implement hybrid ranking: keyword score + recency + confidence + importance + usage.
 - [x] Add query normalization and stopword handling.
 - [x] Add exact-match boost for files, symbols, errors, and commands.
-- [ ] Add top-N retrieval profiles for short, normal, and deep modes.
-- [ ] Add semantic embeddings search.
-- [ ] Add vector store adapter behind a stable interface.
-- [ ] Add optional pgvector/Chroma backend.
-- [ ] Add summarization when retrieved memory exceeds budget.
-- [ ] Add progressive disclosure: compact index first, full details by ID.
+- [x] Add top-N retrieval profiles for short, normal, and deep modes.
+- [x] Add semantic embeddings search.
+- [x] Add vector store adapter behind a stable interface.
+- [x] Add optional pgvector/Chroma backend.
+- [x] Add summarization when retrieved memory exceeds budget.
+- [x] Add progressive disclosure: compact index first, full details by ID.
 
 ## 4. Capture And Extraction
 
 - [x] Add manual capture through CLI `remember`.
 - [x] Add MCP `store_memory`.
 - [x] Add standardized memory payload validation.
-- [ ] Add CLI alias `/note` or `note`.
+- [x] Add CLI alias `/note` or `note`.
 - [x] Implement `Stop` hook extractor from latest assistant message.
-- [ ] Capture "what worked" and "what failed" from assistant responses.
-- [ ] Capture memory from tool errors and runtime failures.
-- [ ] Capture memory from git diff after code changes.
-- [ ] Capture memory from commits.
-- [ ] Normalize extracted observations into memory entries.
-- [ ] Filter low-value capture: small talk, guesses, temporary logs, obvious facts.
-- [ ] Detect duplicate and near-duplicate extracted memories.
+- [x] Capture "what worked" and "what failed" from assistant responses.
+- [x] Capture memory from tool errors and runtime failures.
+- [x] Capture memory from git diff after code changes.
+- [x] Capture memory from commits.
+- [x] Normalize extracted observations into memory entries.
+- [x] Filter low-value capture: small talk, guesses, temporary logs, obvious facts.
+- [x] Detect duplicate and near-duplicate extracted memories.
 - [ ] Detect conflicts during capture.
 - [ ] Add approval mode for auto-captured memory before storing.
 - [ ] Add passive mode where capture suggestions are shown but not stored.
@@ -188,7 +188,6 @@ This is the working checklist for turning Codex-Mem into a full "brain" for Code
 - [ ] Cross-project learning.
 - [ ] Team memory backend.
 - [ ] Shared memory namespaces.
-- [ ] Import from Claude-Mem exports if available.
 - [ ] Migration assistant from Markdown-only memory.
 
 ## 13. Acceptance Milestones

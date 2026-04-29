@@ -16,6 +16,9 @@ class Settings:
         self.default_project = os.getenv("CODEX_MEM_PROJECT", repo_root.name)
         self.inject_limit = int(os.getenv("CODEX_MEM_INJECT_LIMIT", "5"))
         self.token_budget = int(os.getenv("CODEX_MEM_TOKEN_BUDGET", "1200"))
+        self.vector_backend = os.getenv("CODEX_MEM_VECTOR_BACKEND", "local")
+        self.chroma_url = os.getenv("CODEX_MEM_CHROMA_URL", "http://127.0.0.1:8000")
+        self.pgvector_dsn = os.getenv("CODEX_MEM_PGVECTOR_DSN", "")
 
 
 @lru_cache
