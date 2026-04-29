@@ -1,0 +1,41 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python plugins/codex-mem/scripts/hook_memory.py session-start",
+            "timeout": 5,
+            "statusMessage": "Loading Codex-Mem context"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python plugins/codex-mem/scripts/hook_memory.py user-prompt",
+            "timeout": 5,
+            "statusMessage": "Retrieving Codex-Mem context"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python plugins/codex-mem/scripts/hook_memory.py stop",
+            "timeout": 5,
+            "statusMessage": "Codex-Mem capture pass"
+          }
+        ]
+      }
+    ]
+  }
+}

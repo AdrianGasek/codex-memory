@@ -1,0 +1,143 @@
+[
+  {
+    "id": "hist_0bdf6a02ddb7",
+    "memory_id": "mem_760768f44c1e",
+    "version": 1,
+    "action": "create",
+    "snapshot": {
+      "type": "solution",
+      "title": "Memory entries support file path scopes",
+      "context": "Codex-Mem needs memories to apply to specific files or directories for retrieval and conflict handling.",
+      "resolution": "Use file_paths on MemoryCreate/MemoryEntry, store it as JSON in SQLite, include it in exports and ranking text, support search filtering with path, and only supersede same-title memories when their scopes overlap or one side is unscoped.",
+      "confidence": 0.95,
+      "importance": 0.8,
+      "pinned": false,
+      "file_paths": [
+        "apps/api/app/storage/sqlite.py",
+        "apps/api/app/core/models.py",
+        "apps/cli/src/client/memoryClient.ts",
+        "apps/mcp-server/src/server.ts"
+      ],
+      "tags": [
+        "path-scope",
+        "retrieval",
+        "sqlite"
+      ],
+      "source": "codex-session",
+      "project": "codex-brain",
+      "id": "mem_760768f44c1e",
+      "timestamp": "2026-04-29T10:55:09.986007+00:00",
+      "status": "active",
+      "conflict_ids": [],
+      "superseded_by": null,
+      "retrieved_count": 0,
+      "injected_count": 0,
+      "last_used_timestamp": null
+    },
+    "source": "codex-session",
+    "project": "codex-brain",
+    "timestamp": "2026-04-29T10:55:09.989091+00:00"
+  },
+  {
+    "id": "hist_23aa82887f26",
+    "memory_id": "mem_0ead0b3d14c2",
+    "version": 1,
+    "action": "create",
+    "snapshot": {
+      "type": "solution",
+      "title": "Injection observability records trace rows",
+      "context": "Codex-Mem needs to explain what memory was injected into a turn and why.",
+      "resolution": "Store each injection in injection_traces with query, limits, candidate count, injected entries, scores, and ranking reasons; expose the latest trace at GET /memory/debug/injection and include it in /memory/inject responses.",
+      "confidence": 0.95,
+      "importance": 0.85,
+      "pinned": false,
+      "file_paths": [],
+      "tags": [
+        "observability",
+        "injection",
+        "debug"
+      ],
+      "source": "codex-session",
+      "project": "codex-brain",
+      "id": "mem_0ead0b3d14c2",
+      "timestamp": "2026-04-29T10:51:31.258248+00:00",
+      "status": "active",
+      "conflict_ids": [],
+      "superseded_by": null,
+      "retrieved_count": 0,
+      "injected_count": 0,
+      "last_used_timestamp": null
+    },
+    "source": "codex-session",
+    "project": "codex-brain",
+    "timestamp": "2026-04-29T10:51:31.260947+00:00"
+  },
+  {
+    "id": "hist_f5834a0ab1fb",
+    "memory_id": "mem_851c9edb9981",
+    "version": 1,
+    "action": "create",
+    "snapshot": {
+      "type": "decision",
+      "title": "Conflicting memories use latest-wins status metadata",
+      "context": "Codex-Mem needs conflict handling before full update/edit support exists.",
+      "resolution": "When storing a new active memory with the same type, project, and normalized title, mark older active entries superseded, set their superseded_by to the new ID, and store conflict_ids links on both sides through history snapshots.",
+      "confidence": 0.95,
+      "importance": 0.85,
+      "pinned": false,
+      "file_paths": [],
+      "tags": [
+        "conflicts",
+        "latest-wins",
+        "sqlite"
+      ],
+      "source": "codex-session",
+      "project": "codex-brain",
+      "id": "mem_851c9edb9981",
+      "timestamp": "2026-04-29T10:49:09.096240+00:00",
+      "status": "active",
+      "conflict_ids": [],
+      "superseded_by": null,
+      "retrieved_count": 0,
+      "injected_count": 0,
+      "last_used_timestamp": null
+    },
+    "source": "codex-session",
+    "project": "codex-brain",
+    "timestamp": "2026-04-29T10:49:09.104654+00:00"
+  },
+  {
+    "id": "hist_c40d14943100",
+    "memory_id": "mem_4a5119f9514a",
+    "version": 1,
+    "action": "create",
+    "snapshot": {
+      "type": "solution",
+      "title": "Memory history uses immutable snapshots",
+      "context": "Codex-Mem needs auditable memory changes without depending on future edit support.",
+      "resolution": "Create memory_history with per-memory versions and record create/delete snapshots transactionally; export .codex/HISTORY.json and expose GET /memory/history.",
+      "confidence": 0.95,
+      "importance": 0.8,
+      "pinned": false,
+      "file_paths": [],
+      "tags": [
+        "history",
+        "audit",
+        "sqlite"
+      ],
+      "source": "codex-session",
+      "project": "codex-brain",
+      "id": "mem_4a5119f9514a",
+      "timestamp": "2026-04-29T10:42:50.769232+00:00",
+      "status": "active",
+      "conflict_ids": [],
+      "superseded_by": null,
+      "retrieved_count": 0,
+      "injected_count": 0,
+      "last_used_timestamp": null
+    },
+    "source": "codex-session",
+    "project": "codex-brain",
+    "timestamp": "2026-04-29T10:42:50.773318+00:00"
+  }
+]

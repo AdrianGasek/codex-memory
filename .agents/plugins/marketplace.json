@@ -1,0 +1,20 @@
+{
+  "name": "codex-mem-local",
+  "interface": {
+    "displayName": "Codex-Mem Local"
+  },
+  "plugins": [
+    {
+      "name": "codex-mem",
+      "source": {
+        "source": "local",
+        "path": "./plugins/codex-mem"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}

@@ -1,0 +1,28 @@
+{
+  "name": "codex-mem",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Persistent project memory for Codex agents.",
+  "workspaces": [
+    "apps/cli",
+    "apps/mcp-server"
+  ],
+  "scripts": {
+    "build": "bun run build:cli && bun run build:mcp",
+    "build:cli": "tsc -p apps/cli/tsconfig.json",
+    "build:mcp": "tsc -p apps/mcp-server/tsconfig.json",
+    "pack": "bun run build && node infra/scripts/pack-packages.mjs",
+    "pack:cli": "bun run build:cli && node infra/scripts/pack-packages.mjs apps/cli",
+    "pack:mcp": "bun run build:mcp && node infra/scripts/pack-packages.mjs apps/mcp-server",
+    "typecheck": "tsc -p apps/cli/tsconfig.json --noEmit && tsc -p apps/mcp-server/tsconfig.json --noEmit",
+    "api:test": "uv run --project apps/api pytest apps/api/tests",
+    "api:dev": "uv run --project apps/api uvicorn app.main:app --reload --host 127.0.0.1 --port 8000",
+    "mcp:dev": "bun run apps/mcp-server/src/server.ts",
+    "cli": "bun run apps/cli/src/index.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "typescript": "^5.9.3"
+  }
+}

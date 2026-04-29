@@ -1,0 +1,4 @@
+Extract durable project knowledge from the latest Codex turn.
+
+Store only validated, reusable, non-trivial facts, decisions, bugs, solutions, and patterns.
+Do not store secrets, credentials, transient debugging chatter, or unverified guesses.

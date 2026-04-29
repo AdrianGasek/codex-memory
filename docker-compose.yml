@@ -1,0 +1,23 @@
+version: "3.9"
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: infra/docker/api.Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      CODEX_MEM_DATA_DIR: /data
+      CODEX_MEM_DB_PATH: /data/db/codex-mem.sqlite3
+    volumes:
+      - ./data:/data
+
+  mcp:
+    build:
+      context: .
+      dockerfile: infra/docker/mcp.Dockerfile
+    environment:
+      CODEX_MEM_API_URL: http://api:8000
+    depends_on:
+      - api
