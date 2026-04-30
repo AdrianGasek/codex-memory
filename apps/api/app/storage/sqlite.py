@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import json
 import re
@@ -9,12 +9,16 @@ import sqlite3
 from uuid import uuid4
 
 from app.core.models import (
+    AntiPattern,
     InjectionTrace,
     InjectionTraceEntry,
     MemoryCreate,
     MemoryEntry,
     MemoryHistoryEntry,
+    MemoryLink,
     MemoryUpdate,
+    RepeatedError,
+    ReusedSolution,
     SearchResult,
     new_entry,
 )
@@ -25,6 +29,7 @@ SECRET_PATTERNS = [
     re.compile(r"sk-[A-Za-z0-9_-]{20,}"),
     re.compile(r"(?i)(api[_-]?key|token|secret|password)\s*[:=]\s*['\"]?[^'\"\s]+"),
 ]
+SCHEMA_VERSION = "1"
 
 
 class MemoryStore:
@@ -107,6 +112,29 @@ class MemoryStore:
                 )
                 """
             )
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS memory_links (
+                    from_id TEXT NOT NULL,
+                    to_id TEXT NOT NULL,
+                    relation TEXT NOT NULL,
+                    timestamp TEXT NOT NULL,
+                    PRIMARY KEY (from_id, to_id, relation)
+                )
+                """
+            )
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS memory_metadata (
+                    key TEXT PRIMARY KEY,
+                    value TEXT NOT NULL
+                )
+                """
+            )
+            conn.execute(
+                "INSERT OR REPLACE INTO memory_metadata (key, value) VALUES (?, ?)",
+                ("schema_version", SCHEMA_VERSION),
+            )
             self._ensure_column(conn, "importance", "REAL NOT NULL DEFAULT 0.5")
             self._ensure_column(conn, "pinned", "INTEGER NOT NULL DEFAULT 0")
             self._ensure_column(conn, "file_paths", "TEXT NOT NULL DEFAULT '[]'")
@@ -124,6 +152,8 @@ class MemoryStore:
             conn.execute("CREATE INDEX IF NOT EXISTS idx_memory_history_memory_id ON memory_history(memory_id)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_memory_history_timestamp ON memory_history(timestamp)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_injection_traces_timestamp ON injection_traces(timestamp)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_memory_links_from ON memory_links(from_id)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_memory_links_to ON memory_links(to_id)")
 
     def _ensure_column(self, conn: sqlite3.Connection, name: str, definition: str) -> None:
         columns = {row["name"] for row in conn.execute("PRAGMA table_info(memories)").fetchall()}
@@ -234,6 +264,7 @@ class MemoryStore:
         limit: int = 10,
         memory_type: str | None = None,
         project: str | None = None,
+        include_global: bool = True,
         tags: Iterable[str] | None = None,
         path: str | None = None,
         created_after: str | None = None,
@@ -246,8 +277,12 @@ class MemoryStore:
             where.append("type = ?")
             params.append(memory_type)
         if project:
-            where.append("project = ?")
-            params.append(project)
+            if include_global and project != "global":
+                where.append("(project = ? OR project = ?)")
+                params.extend([project, "global"])
+            else:
+                where.append("project = ?")
+                params.append(project)
         if created_after:
             where.append("timestamp >= ?")
             params.append(self._normalize_timestamp_filter(created_after))
@@ -433,6 +468,287 @@ class MemoryStore:
             return None
         return self._trace_from_row(row)
 
+    def metadata(self) -> dict[str, str]:
+        with self._connect() as conn:
+            rows = conn.execute("SELECT key, value FROM memory_metadata ORDER BY key").fetchall()
+        return {row["key"]: row["value"] for row in rows}
+
+    def repeated_errors(
+        self,
+        project: str | None = None,
+        min_count: int = 2,
+        limit: int = 10,
+    ) -> list[RepeatedError]:
+        sql = "SELECT * FROM memories WHERE type = ?"
+        params: list[str] = ["bug"]
+        if project:
+            sql += " AND project = ?"
+            params.append(project)
+        sql += " ORDER BY timestamp DESC"
+
+        with self._connect() as conn:
+            rows = conn.execute(sql, params).fetchall()
+
+        groups: dict[str, list[MemoryEntry]] = {}
+        for row in rows:
+            entry = self._from_row(row)
+            groups.setdefault(self._conflict_key(entry.title), []).append(entry)
+
+        repeated = []
+        for key, entries in groups.items():
+            if len(entries) < min_count:
+                continue
+            entries.sort(key=lambda entry: entry.timestamp, reverse=True)
+            repeated.append(
+                RepeatedError(
+                    key=key,
+                    title=entries[0].title,
+                    count=len(entries),
+                    memory_ids=[entry.id for entry in entries],
+                    last_seen_timestamp=entries[0].timestamp,
+                )
+            )
+
+        repeated.sort(key=lambda item: (item.count, item.last_seen_timestamp), reverse=True)
+        return repeated[:limit]
+
+    def anti_patterns(
+        self,
+        project: str | None = None,
+        min_count: int = 2,
+        limit: int = 10,
+    ) -> list[AntiPattern]:
+        return [
+            AntiPattern(
+                key=error.key,
+                title=f"Anti-pattern: {error.title}",
+                evidence_count=error.count,
+                memory_ids=error.memory_ids,
+                recommendation="Avoid repeating this failure mode; prefer a validated solution or add a guard before retrying.",
+            )
+            for error in self.repeated_errors(project=project, min_count=min_count, limit=limit)
+        ]
+
+    def reused_solutions(
+        self,
+        project: str | None = None,
+        min_uses: int = 2,
+        limit: int = 10,
+    ) -> list[ReusedSolution]:
+        sql = """
+            SELECT * FROM memories
+            WHERE type = ? AND status = 'active'
+              AND (retrieved_count + injected_count) >= ?
+        """
+        params: list[str | int] = ["solution", min_uses]
+        if project:
+            sql += " AND project = ?"
+            params.append(project)
+        sql += " ORDER BY (retrieved_count + injected_count) DESC, last_used_timestamp DESC LIMIT ?"
+        params.append(limit)
+
+        with self._connect() as conn:
+            rows = conn.execute(sql, params).fetchall()
+
+        solutions = []
+        for row in rows:
+            entry = self._from_row(row)
+            solutions.append(
+                ReusedSolution(
+                    id=entry.id,
+                    title=entry.title,
+                    retrieved_count=entry.retrieved_count,
+                    injected_count=entry.injected_count,
+                    total_uses=entry.retrieved_count + entry.injected_count,
+                    last_used_timestamp=entry.last_used_timestamp,
+                )
+            )
+        return solutions
+
+    def promote_best_practices(
+        self,
+        project: str | None = None,
+        min_uses: int = 3,
+        min_confidence: float = 0.7,
+        limit: int = 10,
+    ) -> list[MemoryEntry]:
+        promoted = []
+        for candidate in self.reused_solutions(project=project, min_uses=min_uses, limit=limit):
+            entry = self.get(candidate.id)
+            if not entry or entry.confidence < min_confidence:
+                continue
+            promoted.append(
+                self.store(
+                    MemoryCreate(
+                        type="pattern",
+                        title=f"Best practice: {entry.title}",
+                        context=entry.context,
+                        resolution=entry.resolution,
+                        confidence=max(entry.confidence, 0.85),
+                        importance=max(entry.importance, 0.8),
+                        file_paths=entry.file_paths,
+                        tags=sorted(set(entry.tags + ["best-practice", "promoted"])),
+                        source="smart-promotion",
+                        project=entry.project,
+                    )
+                )
+            )
+        return promoted
+
+    def generate_summary_memory(
+        self,
+        query: str = "",
+        project: str | None = None,
+        limit: int = 5,
+    ) -> MemoryEntry | None:
+        results = self.search(
+            query=query,
+            limit=limit,
+            project=project,
+            track_usage=False,
+        )
+        if not results:
+            return None
+
+        lines = []
+        for result in results:
+            entry = result.entry
+            detail = entry.resolution or entry.context
+            compact = " ".join(detail.split())
+            if len(compact) > 180:
+                compact = compact[:177].rstrip() + "..."
+            lines.append(f"- [{entry.type.value}] {entry.title}: {compact}")
+
+        title_subject = query.strip() or (project or self.default_project)
+        return self.store(
+            MemoryCreate(
+                type="fact",
+                title=f"Summary: {title_subject}"[:120],
+                context="\n".join(lines),
+                resolution="Generated as a compact summary of high-ranking memory entries.",
+                confidence=0.75,
+                importance=0.7,
+                tags=["summary", "generated"],
+                source="smart-summary",
+                project=project,
+            )
+        )
+
+    def archive_low_value_memories(
+        self,
+        max_confidence: float = 0.4,
+        unused_days: int = 30,
+        limit: int = 50,
+    ) -> list[MemoryEntry]:
+        cutoff = datetime.now(timezone.utc) - timedelta(days=unused_days)
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT * FROM memories
+                WHERE status = 'active'
+                  AND pinned = 0
+                  AND confidence <= ?
+                  AND retrieved_count = 0
+                  AND injected_count = 0
+                  AND timestamp <= ?
+                ORDER BY timestamp ASC
+                LIMIT ?
+                """,
+                (max_confidence, cutoff.isoformat(), limit),
+            ).fetchall()
+
+            archived = []
+            for row in rows:
+                entry = self._from_row(row).model_copy(update={"status": "archived"})
+                conn.execute("UPDATE memories SET status = ? WHERE id = ?", ("archived", entry.id))
+                self._record_history(conn, entry, "archive")
+                archived.append(entry)
+
+        if archived:
+            self.export_markdown()
+            self.export_history()
+        return archived
+
+    def consolidate_memory(
+        self,
+        query: str = "",
+        project: str | None = None,
+    ) -> tuple[list[MemoryEntry], MemoryEntry | None, list[MemoryEntry]]:
+        promoted = self.promote_best_practices(project=project, min_uses=3, limit=10)
+        summary = self.generate_summary_memory(query=query, project=project, limit=5)
+        archived = self.archive_low_value_memories(max_confidence=0.4, unused_days=30, limit=50)
+        return promoted, summary, archived
+
+    def link_related_entries(self, project: str | None = None) -> list[MemoryLink]:
+        where = "WHERE status = 'active'"
+        params: list[str] = []
+        if project:
+            where += " AND project = ?"
+            params.append(project)
+        with self._connect() as conn:
+            rows = conn.execute(f"SELECT * FROM memories {where}", params).fetchall()
+            entries = [self._from_row(row) for row in rows]
+            bugs = [entry for entry in entries if entry.type.value == "bug"]
+            solutions = [entry for entry in entries if entry.type.value == "solution"]
+            patterns = [entry for entry in entries if entry.type.value == "pattern"]
+            links: list[MemoryLink] = []
+            for bug in bugs:
+                for solution in solutions:
+                    if self._entries_related(bug, solution):
+                        links.append(MemoryLink(from_id=bug.id, to_id=solution.id, relation="bug_solution"))
+            for solution in solutions:
+                for pattern in patterns:
+                    if self._entries_related(solution, pattern) or pattern.title.lower().endswith(solution.title.lower()):
+                        links.append(MemoryLink(from_id=solution.id, to_id=pattern.id, relation="solution_pattern"))
+            now = datetime.now(timezone.utc).isoformat()
+            conn.executemany(
+                """
+                INSERT OR IGNORE INTO memory_links (from_id, to_id, relation, timestamp)
+                VALUES (?, ?, ?, ?)
+                """,
+                [(link.from_id, link.to_id, link.relation, now) for link in links],
+            )
+            rows = conn.execute("SELECT from_id, to_id, relation FROM memory_links").fetchall()
+        return [MemoryLink(from_id=row["from_id"], to_id=row["to_id"], relation=row["relation"]) for row in rows]
+
+    def _entries_related(self, left: MemoryEntry, right: MemoryEntry) -> bool:
+        left_tags = set(left.tags)
+        right_tags = set(right.tags)
+        if left_tags and left_tags.intersection(right_tags):
+            return True
+        left_tokens = set(self._conflict_key(left.title).split())
+        right_tokens = set(self._conflict_key(right.title).split())
+        return len(left_tokens.intersection(right_tokens)) >= 2
+
+    def recalculate_confidence(self, project: str | None = None, limit: int = 100) -> list[MemoryEntry]:
+        sql = "SELECT * FROM memories WHERE status = 'active'"
+        params: list[str | int] = []
+        if project:
+            sql += " AND project = ?"
+            params.append(project)
+        sql += " ORDER BY timestamp DESC LIMIT ?"
+        params.append(limit)
+
+        updated = []
+        with self._connect() as conn:
+            rows = conn.execute(sql, params).fetchall()
+            for row in rows:
+                entry = self._from_row(row)
+                usage = entry.retrieved_count + (entry.injected_count * 2)
+                usage_boost = min(0.2, usage * 0.02)
+                validation_boost = 0.1 if "validated" in entry.tags else 0.0
+                recalculated = min(1.0, max(entry.confidence, entry.confidence + usage_boost + validation_boost))
+                if recalculated == entry.confidence:
+                    continue
+                changed = entry.model_copy(update={"confidence": round(recalculated, 4)})
+                conn.execute("UPDATE memories SET confidence = ? WHERE id = ?", (changed.confidence, changed.id))
+                self._record_history(conn, changed, "update")
+                updated.append(changed)
+        if updated:
+            self.export_markdown()
+            self.export_history()
+        return updated
+
     def _summary_for_result(self, result: SearchResult) -> str:
         entry = result.entry
         source = entry.resolution or entry.context
@@ -486,6 +802,74 @@ class MemoryStore:
         history_path = self.codex_dir / "HISTORY.json"
         entries = [entry.model_dump(mode="json") for entry in self.history(limit=1000)]
         history_path.write_text(json.dumps(entries, indent=2), encoding="utf-8")
+
+    def import_markdown(self, markdown_path: Path | None = None) -> list[MemoryEntry]:
+        path = markdown_path or (self.codex_dir / "MEMORY.md")
+        if not path.exists():
+            return []
+        text = path.read_text(encoding="utf-8")
+        blocks = re.split(r"(?m)^## ", text)
+        imported = []
+        for block in blocks[1:]:
+            lines = block.splitlines()
+            if not lines:
+                continue
+            title = lines[0].strip()
+            metadata: dict[str, str] = {}
+            context_lines: list[str] = []
+            resolution_lines: list[str] = []
+            section: str | None = None
+            for line in lines[1:]:
+                if line == "### Context":
+                    section = "context"
+                    continue
+                if line == "### Resolution":
+                    section = "resolution"
+                    continue
+                if line.startswith("- ") and section is None:
+                    key, _, value = line[2:].partition(":")
+                    metadata[key.strip()] = value.strip().strip("`")
+                    continue
+                if section == "context" and line.strip():
+                    context_lines.append(line)
+                if section == "resolution" and line.strip():
+                    resolution_lines.append(line)
+            imported.append(
+                self.store(
+                    MemoryCreate(
+                        type=metadata.get("type", "fact"),
+                        title=title,
+                        context="\n".join(context_lines).strip(),
+                        resolution="\n".join(resolution_lines).strip(),
+                        confidence=float(metadata.get("confidence") or 0.75),
+                        importance=float(metadata.get("importance") or 0.5),
+                        pinned=metadata.get("pinned", "False") == "True",
+                        file_paths=[path.strip() for path in metadata.get("file_paths", "").split(",") if path.strip()],
+                        tags=[tag.strip() for tag in metadata.get("tags", "").split(",") if tag.strip()],
+                        source=metadata.get("source") or "markdown-import",
+                        project=metadata.get("project") or None,
+                    )
+                )
+            )
+        return imported
+
+    def sync_selected_to_repo(self) -> tuple[list[MemoryEntry], Path]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT * FROM memories
+                WHERE status = 'active' AND (pinned = 1 OR tags LIKE ?)
+                ORDER BY timestamp DESC
+                """,
+                ('%"repo-sync"%',),
+            ).fetchall()
+        entries = [self._from_row(row) for row in rows]
+        path = self.codex_dir / "SYNCED_MEMORY.json"
+        path.write_text(
+            json.dumps([entry.model_dump(mode="json") for entry in entries], indent=2),
+            encoding="utf-8",
+        )
+        return entries, path
 
     def _from_row(self, row: sqlite3.Row) -> MemoryEntry:
         return MemoryEntry(

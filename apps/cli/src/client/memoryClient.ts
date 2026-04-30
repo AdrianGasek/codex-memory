@@ -21,7 +21,7 @@ export interface MemoryEntry extends Required<Omit<MemoryPayload, "project">> {
   id: string;
   timestamp: string;
   project: string;
-  status: "active" | "superseded";
+  status: "active" | "superseded" | "archived";
   conflict_ids: string[];
   superseded_by: string | null;
   retrieved_count: number;

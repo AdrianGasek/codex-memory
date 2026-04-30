@@ -407,6 +407,327 @@ def test_optional_vector_backends_are_selectable():
     assert pgvector.dsn == "postgresql://memory"
 
 
+def test_repeated_errors_detects_recurring_bug_titles(tmp_path, monkeypatch):
+    store = MemoryStore(
+        db_path=tmp_path / "db" / "codex-mem.sqlite3",
+        codex_dir=tmp_path / ".codex",
+        default_project="tests",
+    )
+    monkeypatch.setattr(memory, "get_store", lambda: store)
+
+    first = store.store(
+        MemoryCreate(
+            type="bug",
+            title="npm.ps1 execution policy blocked validation",
+            context="First session saw PowerShell block npm.ps1.",
+            source="post-tool-use",
+        )
+    )
+    second = store.store(
+        MemoryCreate(
+            type="bug",
+            title="npm.ps1 execution policy blocked validation",
+            context="Later session hit the same validation failure.",
+            source="post-tool-use",
+        )
+    )
+    store.store(
+        MemoryCreate(
+            type="bug",
+            title="Unrelated transient API timeout",
+            context="Only happened once.",
+            source="post-tool-use",
+        )
+    )
+
+    client = TestClient(app)
+    response = client.get("/memory/smart/repeated-errors")
+
+    assert response.status_code == 200
+    repeated = response.json()["repeated_errors"]
+    assert len(repeated) == 1
+    assert repeated[0]["count"] == 2
+    assert repeated[0]["memory_ids"] == [second.id, first.id]
+
+
+def test_anti_patterns_detect_repeated_failures(tmp_path, monkeypatch):
+    store = MemoryStore(
+        db_path=tmp_path / "db" / "codex-mem.sqlite3",
+        codex_dir=tmp_path / ".codex",
+        default_project="tests",
+    )
+    monkeypatch.setattr(memory, "get_store", lambda: store)
+
+    first = store.store(
+        MemoryCreate(type="bug", title="Retrying without API health check", context="Failed once.", source="test")
+    )
+    second = store.store(
+        MemoryCreate(type="bug", title="Retrying without API health check", context="Failed again.", source="test")
+    )
+
+    client = TestClient(app)
+    response = client.get("/memory/smart/anti-patterns")
+
+    assert response.status_code == 200
+    anti_patterns = response.json()["anti_patterns"]
+    assert anti_patterns[0]["title"] == "Anti-pattern: Retrying without API health check"
+    assert anti_patterns[0]["evidence_count"] == 2
+    assert anti_patterns[0]["memory_ids"] == [second.id, first.id]
+
+
+def test_reused_solutions_detects_frequently_used_entries(tmp_path, monkeypatch):
+    store = MemoryStore(
+        db_path=tmp_path / "db" / "codex-mem.sqlite3",
+        codex_dir=tmp_path / ".codex",
+        default_project="tests",
+    )
+    monkeypatch.setattr(memory, "get_store", lambda: store)
+
+    reused = store.store(
+        MemoryCreate(
+            type="solution",
+            title="Use npm.cmd on PowerShell",
+            context="PowerShell execution policy can block npm.ps1.",
+            resolution="Run npm.cmd for validation commands.",
+            source="test",
+        )
+    )
+    store.store(
+        MemoryCreate(
+            type="solution",
+            title="One-off setup solution",
+            context="Only used once.",
+            resolution="Keep as normal memory.",
+            source="test",
+        )
+    )
+    store.search(query="npm PowerShell validation", limit=1)
+    store.inject_context(query="npm PowerShell", limit=1, token_budget=500)
+
+    client = TestClient(app)
+    response = client.get("/memory/smart/reused-solutions", params={"min_uses": 2})
+
+    assert response.status_code == 200
+    solutions = response.json()["reused_solutions"]
+    assert len(solutions) == 1
+    assert solutions[0]["id"] == reused.id
+    assert solutions[0]["total_uses"] >= 2
+
+
+def test_promote_best_practices_creates_pattern_from_reused_solution(tmp_path, monkeypatch):
+    store = MemoryStore(
+        db_path=tmp_path / "db" / "codex-mem.sqlite3",
+        codex_dir=tmp_path / ".codex",
+        default_project="tests",
+    )
+    monkeypatch.setattr(memory, "get_store", lambda: store)
+
+    solution = store.store(
+        MemoryCreate(
+            type="solution",
+            title="Use npm.cmd on PowerShell",
+            context="PowerShell execution policy can block npm.ps1.",
+            resolution="Use npm.cmd for validation commands on Windows.",
+            confidence=0.9,
+            tags=["windows", "validation"],
+            source="test",
+        )
+    )
+    store.search(query="npm PowerShell validation", limit=1)
+    store.search(query="npm.cmd validation", limit=1)
+
+    client = TestClient(app)
+    response = client.post("/memory/smart/promote-best-practices", params={"min_uses": 2})
+
+    assert response.status_code == 200
+    promoted = response.json()["promoted"]
+    assert len(promoted) == 1
+    assert promoted[0]["type"] == "pattern"
+    assert promoted[0]["title"] == "Best practice: Use npm.cmd on PowerShell"
+    assert "best-practice" in promoted[0]["tags"]
+    assert promoted[0]["context"] == solution.context
+
+
+def test_generate_summary_memory_creates_compact_fact(tmp_path, monkeypatch):
+    store = MemoryStore(
+        db_path=tmp_path / "db" / "codex-mem.sqlite3",
+        codex_dir=tmp_path / ".codex",
+        default_project="tests",
+    )
+    monkeypatch.setattr(memory, "get_store", lambda: store)
+
+    store.store(
+        MemoryCreate(
+            type="decision",
+            title="Use SQLite first",
+            context="SQLite keeps the MVP local.",
+            resolution="Keep memory in SQLite before remote backends.",
+            source="test",
+        )
+    )
+    store.store(
+        MemoryCreate(
+            type="solution",
+            title="Use history table",
+            context="Memory updates need auditability.",
+            resolution="Record immutable snapshots in memory_history.",
+            source="test",
+        )
+    )
+
+    client = TestClient(app)
+    response = client.post("/memory/smart/summary", params={"query": "SQLite memory", "limit": 2})
+
+    assert response.status_code == 200
+    summary = response.json()["summary"]
+    assert summary["type"] == "fact"
+    assert summary["title"] == "Summary: SQLite memory"
+    assert "summary" in summary["tags"]
+    assert "Use SQLite first" in summary["context"]
+
+
+def test_archive_low_value_memories_archives_old_unused_entries(tmp_path, monkeypatch):
+    store = MemoryStore(
+        db_path=tmp_path / "db" / "codex-mem.sqlite3",
+        codex_dir=tmp_path / ".codex",
+        default_project="tests",
+    )
+    monkeypatch.setattr(memory, "get_store", lambda: store)
+
+    old = store.store(
+        MemoryCreate(
+            type="fact",
+            title="Low confidence stale note",
+            context="This was never reused.",
+            confidence=0.2,
+            source="test",
+        )
+    )
+    fresh = store.store(
+        MemoryCreate(
+            type="fact",
+            title="Fresh low confidence note",
+            context="Too new to archive.",
+            confidence=0.2,
+            source="test",
+        )
+    )
+    with store._connect() as conn:
+        conn.execute("UPDATE memories SET timestamp = ? WHERE id = ?", ("2026-01-01T00:00:00+00:00", old.id))
+
+    client = TestClient(app)
+    response = client.post("/memory/smart/archive-low-value", params={"unused_days": 1})
+
+    assert response.status_code == 200
+    archived = response.json()["archived"]
+    assert [entry["id"] for entry in archived] == [old.id]
+    assert archived[0]["status"] == "archived"
+    assert store.get(old.id) is None
+    assert store.get(fresh.id) is not None
+
+
+def test_consolidation_job_runs_summary_and_archive(tmp_path, monkeypatch):
+    store = MemoryStore(
+        db_path=tmp_path / "db" / "codex-mem.sqlite3",
+        codex_dir=tmp_path / ".codex",
+        default_project="tests",
+    )
+    monkeypatch.setattr(memory, "get_store", lambda: store)
+
+    store.store(
+        MemoryCreate(
+            type="decision",
+            title="Use SQLite first",
+            context="SQLite keeps the MVP local.",
+            confidence=0.8,
+            source="test",
+        )
+    )
+    stale = store.store(
+        MemoryCreate(
+            type="fact",
+            title="Stale guess",
+            context="Old low confidence note.",
+            confidence=0.1,
+            source="test",
+        )
+    )
+    with store._connect() as conn:
+        conn.execute("UPDATE memories SET timestamp = ? WHERE id = ?", ("2026-01-01T00:00:00+00:00", stale.id))
+
+    client = TestClient(app)
+    response = client.post("/memory/smart/consolidate", params={"query": "SQLite"})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["summary"]["title"] == "Summary: SQLite"
+    assert [entry["id"] for entry in body["archived"]] == [stale.id]
+
+
+def test_cross_entry_linking_connects_bug_solution_and_pattern(tmp_path, monkeypatch):
+    store = MemoryStore(
+        db_path=tmp_path / "db" / "codex-mem.sqlite3",
+        codex_dir=tmp_path / ".codex",
+        default_project="tests",
+    )
+    monkeypatch.setattr(memory, "get_store", lambda: store)
+
+    bug = store.store(
+        MemoryCreate(type="bug", title="npm.ps1 blocked validation", context="Failure.", tags=["npm"], source="test")
+    )
+    solution = store.store(
+        MemoryCreate(type="solution", title="Use npm.cmd on PowerShell", context="Fix.", tags=["npm"], source="test")
+    )
+    pattern = store.store(
+        MemoryCreate(
+            type="pattern",
+            title="Best practice: Use npm.cmd on PowerShell",
+            context="Practice.",
+            tags=["best-practice"],
+            source="test",
+        )
+    )
+
+    client = TestClient(app)
+    response = client.post("/memory/smart/link-related")
+
+    assert response.status_code == 200
+    links = {(link["from_id"], link["to_id"], link["relation"]) for link in response.json()["links"]}
+    assert (bug.id, solution.id, "bug_solution") in links
+    assert (solution.id, pattern.id, "solution_pattern") in links
+
+
+def test_recalculate_confidence_uses_usage_and_validation(tmp_path, monkeypatch):
+    store = MemoryStore(
+        db_path=tmp_path / "db" / "codex-mem.sqlite3",
+        codex_dir=tmp_path / ".codex",
+        default_project="tests",
+    )
+    monkeypatch.setattr(memory, "get_store", lambda: store)
+
+    entry = store.store(
+        MemoryCreate(
+            type="solution",
+            title="Validated reusable fix",
+            context="Reusable fix.",
+            confidence=0.5,
+            tags=["validated"],
+            source="test",
+        )
+    )
+    store.search(query="Validated reusable", limit=1)
+
+    client = TestClient(app)
+    response = client.post("/memory/smart/recalculate-confidence")
+
+    assert response.status_code == 200
+    updated = response.json()["updated"]
+    assert updated[0]["id"] == entry.id
+    assert updated[0]["confidence"] > 0.5
+    history = store.history(memory_id=entry.id)
+    assert history[0].action == "update"
+
+
 def test_injection_summarizes_memories_when_budget_is_tight(tmp_path):
     store = MemoryStore(
         db_path=tmp_path / "db" / "codex-mem.sqlite3",
@@ -462,3 +783,136 @@ def test_progressive_disclosure_index_and_get_by_id(tmp_path, monkeypatch):
     full = client.get(f"/memory/{entry.id}")
     assert full.status_code == 200
     assert full.json()["context"] == "Progressive disclosure should keep initial retrieval small."
+
+
+def test_markdown_import_back_into_sqlite(tmp_path):
+    codex_dir = tmp_path / ".codex"
+    store = MemoryStore(
+        db_path=tmp_path / "db" / "codex-mem.sqlite3",
+        codex_dir=codex_dir,
+        default_project="tests",
+    )
+    markdown = codex_dir / "import.md"
+    markdown.write_text(
+        "\n".join(
+            [
+                "# MEMORY",
+                "",
+                "## Imported decision",
+                "",
+                "- type: `decision`",
+                "- confidence: `0.90`",
+                "- importance: `0.80`",
+                "- pinned: `False`",
+                "- file_paths: `apps/api/app/storage/sqlite.py`",
+                "- source: `markdown`",
+                "- project: `tests`",
+                "- tags: `import, markdown`",
+                "",
+                "### Context",
+                "",
+                "Markdown should import into SQLite.",
+                "",
+                "### Resolution",
+                "",
+                "Parse exported metadata and text sections.",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    imported = store.import_markdown(markdown)
+
+    assert len(imported) == 1
+    assert imported[0].type.value == "decision"
+    assert imported[0].title == "Imported decision"
+    assert imported[0].file_paths == ["apps/api/app/storage/sqlite.py"]
+    assert imported[0].tags == ["import", "markdown"]
+
+
+def test_markdown_export_import_round_trip(tmp_path):
+    source = MemoryStore(
+        db_path=tmp_path / "source" / "db.sqlite3",
+        codex_dir=tmp_path / "source" / ".codex",
+        default_project="tests",
+    )
+    original = source.store(
+        MemoryCreate(
+            type="solution",
+            title="Round trip memory",
+            context="Exported context survives.",
+            resolution="Imported resolution survives.",
+            confidence=0.8,
+            tags=["round-trip"],
+            source="test",
+        )
+    )
+    exported = tmp_path / "source" / ".codex" / "MEMORY.md"
+
+    target = MemoryStore(
+        db_path=tmp_path / "target" / "db.sqlite3",
+        codex_dir=tmp_path / "target" / ".codex",
+        default_project="tests",
+    )
+    imported = target.import_markdown(exported)
+
+    assert len(imported) == 1
+    assert imported[0].title == original.title
+    assert imported[0].context == original.context
+    assert imported[0].resolution == original.resolution
+    assert imported[0].tags == ["round-trip"]
+
+
+def test_repo_sync_exports_selected_entries(tmp_path, monkeypatch):
+    store = MemoryStore(
+        db_path=tmp_path / "db" / "codex-mem.sqlite3",
+        codex_dir=tmp_path / ".codex",
+        default_project="tests",
+    )
+    monkeypatch.setattr(memory, "get_store", lambda: store)
+
+    selected = store.store(
+        MemoryCreate(type="decision", title="Sync this", context="Selected.", tags=["repo-sync"], source="test")
+    )
+    store.store(MemoryCreate(type="fact", title="Do not sync", context="Unselected.", source="test"))
+
+    client = TestClient(app)
+    response = client.post("/memory/sync/repo")
+
+    assert response.status_code == 200
+    assert [entry["id"] for entry in response.json()["synced"]] == [selected.id]
+    exported = json.loads((tmp_path / ".codex" / "SYNCED_MEMORY.json").read_text(encoding="utf-8"))
+    assert exported[0]["title"] == "Sync this"
+
+
+def test_project_search_includes_global_scope(tmp_path):
+    store = MemoryStore(
+        db_path=tmp_path / "db" / "codex-mem.sqlite3",
+        codex_dir=tmp_path / ".codex",
+        default_project="tests",
+    )
+    global_entry = store.store(
+        MemoryCreate(type="fact", title="Global memory rule", context="Applies everywhere.", project="global", source="test")
+    )
+    local_entry = store.store(
+        MemoryCreate(type="fact", title="Local memory rule", context="Applies here.", project="tests", source="test")
+    )
+
+    results = store.search(query="memory rule", project="tests", track_usage=False)
+
+    assert {result.entry.id for result in results} == {global_entry.id, local_entry.id}
+
+
+def test_memory_metadata_exposes_schema_version(tmp_path, monkeypatch):
+    store = MemoryStore(
+        db_path=tmp_path / "db" / "codex-mem.sqlite3",
+        codex_dir=tmp_path / ".codex",
+        default_project="tests",
+    )
+    monkeypatch.setattr(memory, "get_store", lambda: store)
+
+    client = TestClient(app)
+    response = client.get("/memory/metadata")
+
+    assert response.status_code == 200
+    assert response.json()["schema_version"] == "1"

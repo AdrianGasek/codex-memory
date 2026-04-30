@@ -4,15 +4,25 @@ from typing import Literal
 from fastapi import APIRouter, HTTPException, Query
 
 from app.core.models import (
+    AntiPatternResponse,
+    ArchiveResponse,
     CompactIndexResponse,
+    ConfidenceRecalculationResponse,
+    ConsolidationResponse,
     CompactMemoryResult,
     InjectResponse,
     InjectionTrace,
     MemoryCreate,
     MemoryEntry,
     MemoryHistoryEntry,
+    MemoryLinkResponse,
     MemoryUpdate,
+    PromotedBestPracticeResponse,
+    RepeatedErrorResponse,
+    RepoSyncResponse,
+    ReusedSolutionResponse,
     SearchResponse,
+    SummaryMemoryResponse,
 )
 from app.core.settings import get_settings
 from app.storage.sqlite import MemoryStore
@@ -154,6 +164,117 @@ def inject_memory(
 @router.get("/debug/injection", response_model=InjectionTrace | None)
 def latest_injection_trace() -> InjectionTrace | None:
     return get_store().latest_injection_trace()
+
+
+@router.get("/metadata")
+def memory_metadata() -> dict[str, str]:
+    return get_store().metadata()
+
+
+@router.get("/smart/repeated-errors", response_model=RepeatedErrorResponse)
+def repeated_errors(
+    project: str | None = None,
+    min_count: int = Query(default=2, ge=2, le=20),
+    limit: int = Query(default=10, ge=1, le=50),
+) -> RepeatedErrorResponse:
+    return RepeatedErrorResponse(
+        repeated_errors=get_store().repeated_errors(project=project, min_count=min_count, limit=limit)
+    )
+
+
+@router.get("/smart/anti-patterns", response_model=AntiPatternResponse)
+def anti_patterns(
+    project: str | None = None,
+    min_count: int = Query(default=2, ge=2, le=20),
+    limit: int = Query(default=10, ge=1, le=50),
+) -> AntiPatternResponse:
+    return AntiPatternResponse(
+        anti_patterns=get_store().anti_patterns(project=project, min_count=min_count, limit=limit)
+    )
+
+
+@router.get("/smart/reused-solutions", response_model=ReusedSolutionResponse)
+def reused_solutions(
+    project: str | None = None,
+    min_uses: int = Query(default=2, ge=1, le=100),
+    limit: int = Query(default=10, ge=1, le=50),
+) -> ReusedSolutionResponse:
+    return ReusedSolutionResponse(
+        reused_solutions=get_store().reused_solutions(project=project, min_uses=min_uses, limit=limit)
+    )
+
+
+@router.post("/smart/promote-best-practices", response_model=PromotedBestPracticeResponse)
+def promote_best_practices(
+    project: str | None = None,
+    min_uses: int = Query(default=3, ge=1, le=100),
+    min_confidence: float = Query(default=0.7, ge=0.0, le=1.0),
+    limit: int = Query(default=10, ge=1, le=50),
+) -> PromotedBestPracticeResponse:
+    return PromotedBestPracticeResponse(
+        promoted=get_store().promote_best_practices(
+            project=project,
+            min_uses=min_uses,
+            min_confidence=min_confidence,
+            limit=limit,
+        )
+    )
+
+
+@router.post("/smart/summary", response_model=SummaryMemoryResponse)
+def generate_summary_memory(
+    query: str = "",
+    project: str | None = None,
+    limit: int = Query(default=5, ge=1, le=25),
+) -> SummaryMemoryResponse:
+    return SummaryMemoryResponse(
+        summary=get_store().generate_summary_memory(query=query, project=project, limit=limit)
+    )
+
+
+@router.post("/smart/archive-low-value", response_model=ArchiveResponse)
+def archive_low_value_memories(
+    max_confidence: float = Query(default=0.4, ge=0.0, le=1.0),
+    unused_days: int = Query(default=30, ge=0, le=3650),
+    limit: int = Query(default=50, ge=1, le=500),
+) -> ArchiveResponse:
+    return ArchiveResponse(
+        archived=get_store().archive_low_value_memories(
+            max_confidence=max_confidence,
+            unused_days=unused_days,
+            limit=limit,
+        )
+    )
+
+
+@router.post("/smart/consolidate", response_model=ConsolidationResponse)
+def consolidate_memory(
+    query: str = "",
+    project: str | None = None,
+) -> ConsolidationResponse:
+    promoted, summary, archived = get_store().consolidate_memory(query=query, project=project)
+    return ConsolidationResponse(promoted=promoted, summary=summary, archived=archived)
+
+
+@router.post("/smart/link-related", response_model=MemoryLinkResponse)
+def link_related_entries(project: str | None = None) -> MemoryLinkResponse:
+    return MemoryLinkResponse(links=get_store().link_related_entries(project=project))
+
+
+@router.post("/smart/recalculate-confidence", response_model=ConfidenceRecalculationResponse)
+def recalculate_confidence(
+    project: str | None = None,
+    limit: int = Query(default=100, ge=1, le=1000),
+) -> ConfidenceRecalculationResponse:
+    return ConfidenceRecalculationResponse(
+        updated=get_store().recalculate_confidence(project=project, limit=limit)
+    )
+
+
+@router.post("/sync/repo", response_model=RepoSyncResponse)
+def sync_selected_to_repo() -> RepoSyncResponse:
+    synced, path = get_store().sync_selected_to_repo()
+    return RepoSyncResponse(synced=synced, path=str(path))
 
 
 @router.get("/history", response_model=list[MemoryHistoryEntry])

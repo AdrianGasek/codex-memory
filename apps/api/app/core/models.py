@@ -79,7 +79,7 @@ class MemoryUpdate(BaseModel):
 class MemoryEntry(MemoryCreate):
     id: str
     timestamp: str
-    status: Literal["active", "superseded"] = "active"
+    status: Literal["active", "superseded", "archived"] = "active"
     conflict_ids: list[str] = Field(default_factory=list)
     superseded_by: str | None = None
     retrieved_count: int = 0
@@ -91,7 +91,7 @@ class MemoryHistoryEntry(BaseModel):
     id: str
     memory_id: str
     version: int
-    action: Literal["create", "delete", "supersede", "update"]
+    action: Literal["archive", "create", "delete", "supersede", "update"]
     snapshot: MemoryEntry
     source: str
     project: str
@@ -158,6 +158,80 @@ class InjectResponse(BaseModel):
     additional_context: str
     results: list[SearchResult]
     trace: InjectionTrace | None = None
+
+
+class RepeatedError(BaseModel):
+    key: str
+    title: str
+    count: int
+    memory_ids: list[str]
+    last_seen_timestamp: str
+
+
+class RepeatedErrorResponse(BaseModel):
+    repeated_errors: list[RepeatedError]
+
+
+class AntiPattern(BaseModel):
+    key: str
+    title: str
+    evidence_count: int
+    memory_ids: list[str]
+    recommendation: str
+
+
+class AntiPatternResponse(BaseModel):
+    anti_patterns: list[AntiPattern]
+
+
+class ReusedSolution(BaseModel):
+    id: str
+    title: str
+    retrieved_count: int
+    injected_count: int
+    total_uses: int
+    last_used_timestamp: str | None = None
+
+
+class ReusedSolutionResponse(BaseModel):
+    reused_solutions: list[ReusedSolution]
+
+
+class PromotedBestPracticeResponse(BaseModel):
+    promoted: list[MemoryEntry]
+
+
+class SummaryMemoryResponse(BaseModel):
+    summary: MemoryEntry | None = None
+
+
+class ArchiveResponse(BaseModel):
+    archived: list[MemoryEntry]
+
+
+class ConsolidationResponse(BaseModel):
+    promoted: list[MemoryEntry]
+    summary: MemoryEntry | None = None
+    archived: list[MemoryEntry]
+
+
+class RepoSyncResponse(BaseModel):
+    synced: list[MemoryEntry]
+    path: str
+
+
+class MemoryLink(BaseModel):
+    from_id: str
+    to_id: str
+    relation: Literal["bug_solution", "solution_pattern"]
+
+
+class MemoryLinkResponse(BaseModel):
+    links: list[MemoryLink]
+
+
+class ConfidenceRecalculationResponse(BaseModel):
+    updated: list[MemoryEntry]
 
 
 class ErrorResponse(BaseModel):

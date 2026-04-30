@@ -13,8 +13,33 @@ import urllib.request
 API_URL = os.getenv("CODEX_MEM_API_URL", "http://127.0.0.1:8000").rstrip("/")
 LIMIT = os.getenv("CODEX_MEM_INJECT_LIMIT", "5")
 TOKEN_BUDGET = os.getenv("CODEX_MEM_TOKEN_BUDGET", "1200")
+SUPPORTED_MODES = {"active", "approval", "debug", "passive"}
+CAPTURE_MODE = os.getenv("CODEX_MEM_MODE", os.getenv("CODEX_MEM_CAPTURE_MODE", "active")).strip().lower()
+if CAPTURE_MODE not in SUPPORTED_MODES:
+    CAPTURE_MODE = "active"
+APPROVAL_QUEUE = os.getenv("CODEX_MEM_APPROVAL_QUEUE", ".codex/PENDING_MEMORY.jsonl")
+HOOKS_ENABLED = os.getenv("CODEX_MEM_HOOKS_ENABLED", "true").strip().lower() not in {"0", "false", "no", "off"}
+DISABLED_HOOKS = {
+    hook_name.strip().lower()
+    for hook_name in os.getenv("CODEX_MEM_DISABLED_HOOKS", "").split(",")
+    if hook_name.strip()
+}
 MIN_CAPTURE_CHARS = 80
 MAX_CAPTURE_ITEMS = 3
+PASSIVE_SUGGESTIONS: list[dict] = []
+PROJECT_CONFIG = {}
+
+
+def project_config() -> dict:
+    global PROJECT_CONFIG
+    if PROJECT_CONFIG:
+        return PROJECT_CONFIG
+    path = Path.cwd() / ".codex" / "mem.config.json"
+    try:
+        PROJECT_CONFIG = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        PROJECT_CONFIG = {}
+    return PROJECT_CONFIG
 
 WORKED_PATTERNS = [
     re.compile(r"\b(what worked|worked|passed|succeeded|verified|tests? pass(?:ed)?)\b", re.I),
@@ -46,20 +71,39 @@ def main() -> None:
     mode = sys.argv[1] if len(sys.argv) > 1 else "user-prompt"
     payload = read_stdin_json()
 
+    if not hook_enabled(mode):
+        print(json.dumps({"continue": True, "suppressOutput": True}))
+        return
+
+    if mode == "session-start" and not api_available():
+        print(json.dumps(degraded_output(f"Codex-Mem API is unavailable at {API_URL}; memory startup check failed.", visible=True)))
+        return
+
     if mode == "stop":
         captured = capture_from_stop(payload)
-        print(json.dumps({"continue": True, "suppressOutput": True}))
+        output = {"continue": True, "suppressOutput": CAPTURE_MODE not in {"debug", "passive"}}
+        if CAPTURE_MODE == "passive" and captured:
+            output["message"] = passive_capture_summary()
+        if CAPTURE_MODE == "debug":
+            output["message"] = debug_capture_summary("Stop", captured)
+        print(json.dumps(output))
         return
 
     if mode == "post-tool-use":
-        capture_from_tool_result(payload)
-        print(json.dumps({"continue": True, "suppressOutput": True}))
+        captured = capture_from_tool_result(payload)
+        output = {"continue": True, "suppressOutput": CAPTURE_MODE not in {"debug", "passive"}}
+        if CAPTURE_MODE == "passive" and captured:
+            output["message"] = passive_capture_summary()
+        if CAPTURE_MODE == "debug":
+            output["message"] = debug_capture_summary("PostToolUse", captured)
+        print(json.dumps(output))
         return
 
     query = payload.get("prompt") or payload.get("cwd") or "project memory"
-    context = fetch_context(str(query))
+    injection = fetch_injection(str(query))
+    context = injection.get("additional_context", "")
     if not context:
-        print(json.dumps({"continue": True, "suppressOutput": True}))
+        print(json.dumps(degraded_output("Codex-Mem memory context was unavailable; continuing without injection.")))
         return
 
     if mode == "session-start":
@@ -79,7 +123,33 @@ def main() -> None:
             },
         }
 
+    if CAPTURE_MODE == "debug":
+        output["suppressOutput"] = False
+        output["message"] = debug_injection_summary(injection)
+
     print(json.dumps(output))
+
+
+def degraded_output(message: str, visible: bool = False) -> dict:
+    return {
+        "continue": True,
+        "suppressOutput": not visible,
+        "degraded": True,
+        "message": message,
+    }
+
+
+def hook_enabled(mode: str) -> bool:
+    if not HOOKS_ENABLED:
+        return False
+    normalized = mode.strip().lower()
+    aliases = {
+        "session-start": "sessionstart",
+        "user-prompt": "userpromptsubmit",
+        "post-tool-use": "posttooluse",
+    }
+    candidates = {normalized, aliases.get(normalized, normalized)}
+    return not candidates.intersection(DISABLED_HOOKS)
 
 
 def read_stdin_json() -> dict:
@@ -93,6 +163,10 @@ def read_stdin_json() -> dict:
 
 
 def fetch_context(query: str) -> str:
+    return fetch_injection(query).get("additional_context", "")
+
+
+def fetch_injection(query: str) -> dict:
     params = urllib.parse.urlencode(
         {
             "query": query,
@@ -105,8 +179,20 @@ def fetch_context(query: str) -> str:
         with urllib.request.urlopen(request, timeout=3) as response:
             body = json.loads(response.read().decode("utf-8"))
     except Exception:
-        return ""
-    return body.get("additional_context", "")
+        return {}
+    return body
+
+
+def api_available() -> bool:
+    request = urllib.request.Request(f"{API_URL}/health")
+    try:
+        with urllib.request.urlopen(request, timeout=2) as response:
+            if not 200 <= response.status < 300:
+                return False
+            body = json.loads(response.read().decode("utf-8"))
+    except Exception:
+        return False
+    return body.get("status") == "ok"
 
 
 def capture_from_stop(payload: dict) -> int:
@@ -126,7 +212,7 @@ def capture_from_git_diff(payload: dict) -> int:
     cwd = payload.get("cwd") or os.getcwd()
     try:
         diff = subprocess.run(
-            ["git", "diff", "--stat", "--", ":!data/db", ":!data/vectors"],
+            ["git", "diff", "--stat", "--", *git_ignore_pathspecs()],
             cwd=str(cwd),
             check=False,
             capture_output=True,
@@ -265,14 +351,15 @@ def extract_text(value: object) -> str:
 
 def extract_memories(message: str) -> list[dict]:
     cleaned = normalize_message(message)
-    if len(cleaned) < MIN_CAPTURE_CHARS or is_low_value(cleaned):
+    min_chars = capture_min_chars()
+    if len(cleaned) < min_chars or is_low_value(cleaned):
         return []
 
     candidates = split_candidates(cleaned)
     memories = []
     seen_candidates = []
     for candidate in candidates:
-        if len(candidate) < MIN_CAPTURE_CHARS or is_low_value(candidate):
+        if len(candidate) < min_chars or is_low_value(candidate):
             continue
         if not is_actionable_capture(candidate):
             continue
@@ -283,6 +370,15 @@ def extract_memories(message: str) -> list[dict]:
         if len(memories) >= MAX_CAPTURE_ITEMS:
             break
     return memories
+
+
+def capture_min_chars() -> int:
+    sensitivity = str(project_config().get("capture", {}).get("sensitivity", "standard")).lower()
+    if sensitivity == "high":
+        return 40
+    if sensitivity == "strict":
+        return 140
+    return MIN_CAPTURE_CHARS
 
 
 def normalize_message(message: str) -> str:
@@ -415,7 +511,17 @@ def title_from_text(text: str) -> str:
 
 
 def post_memory(memory: dict) -> bool:
-    body = json.dumps(memory).encode("utf-8")
+    annotated = annotate_capture_conflicts(memory)
+    if should_skip_memory(annotated):
+        return False
+    if CAPTURE_MODE == "passive":
+        PASSIVE_SUGGESTIONS.append(annotated)
+        return True
+
+    if CAPTURE_MODE == "approval":
+        return queue_capture_for_approval(annotated)
+
+    body = json.dumps(annotated).encode("utf-8")
     request = urllib.request.Request(
         f"{API_URL}/memory",
         data=body,
@@ -427,6 +533,143 @@ def post_memory(memory: dict) -> bool:
             return 200 <= response.status < 300
     except Exception:
         return False
+
+
+def should_skip_memory(memory: dict) -> bool:
+    capture_config = project_config().get("capture", {})
+    no_store_tags = {str(tag).lower() for tag in capture_config.get("no_store_tags", [])}
+    memory_tags = {str(tag).lower() for tag in memory.get("tags", [])}
+    return bool(no_store_tags.intersection(memory_tags))
+
+
+def git_ignore_pathspecs() -> list[str]:
+    capture_config = project_config().get("capture", {})
+    ignore_paths = capture_config.get("ignore_paths", ["data/db", "data/vectors"])
+    return [f":!{str(path).strip()}" for path in ignore_paths if str(path).strip()]
+
+
+def queue_capture_for_approval(memory: dict) -> bool:
+    queue_path = Path(APPROVAL_QUEUE)
+    if not queue_path.is_absolute():
+        queue_path = Path.cwd() / queue_path
+    try:
+        queue_path.parent.mkdir(parents=True, exist_ok=True)
+        with queue_path.open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps({"status": "pending", "memory": memory}, sort_keys=True) + "\n")
+        return True
+    except OSError:
+        return False
+
+
+def passive_capture_summary() -> str:
+    lines = ["Codex-Mem passive capture suggestions:"]
+    for memory in PASSIVE_SUGGESTIONS:
+        memory_type = str(memory.get("type") or "fact")
+        title = str(memory.get("title") or "Untitled memory")
+        source = str(memory.get("source") or "auto-capture")
+        lines.append(f"- [{memory_type}] {title} ({source})")
+    return "\n".join(lines)
+
+
+def debug_capture_summary(hook_name: str, captured: int) -> str:
+    return f"Codex-Mem debug: mode={CAPTURE_MODE}, hook={hook_name}, captured={captured}."
+
+
+def debug_injection_summary(injection: dict) -> str:
+    trace = injection.get("trace") or {}
+    entries = trace.get("entries") or []
+    lines = [
+        "Codex-Mem debug: injected memory entries:",
+        f"- requested_limit={trace.get('requested_limit', 0)} candidate_count={trace.get('candidate_count', 0)} injected_count={trace.get('injected_count', len(entries))}",
+    ]
+    if not entries:
+        lines.append("- no entries injected")
+        return "\n".join(lines)
+    for entry in entries:
+        title = str(entry.get("title") or "Untitled memory")
+        memory_id = str(entry.get("memory_id") or "")
+        score = entry.get("score", 0)
+        reason = str(entry.get("reason") or "no ranking reason")
+        lines.append(f"- {title} ({memory_id}, score={float(score):.2f}): {reason}")
+    return "\n".join(lines)
+
+
+def annotate_capture_conflicts(memory: dict) -> dict:
+    conflict_ids = find_capture_conflicts(memory)
+    if not conflict_ids:
+        return memory
+
+    annotated = dict(memory)
+    tags = list(annotated.get("tags") or [])
+    for tag in ("conflict", "latest-wins"):
+        if tag not in tags:
+            tags.append(tag)
+    annotated["tags"] = tags
+
+    resolution = str(annotated.get("resolution") or "").strip()
+    conflict_note = f"Auto-capture detected conflicting active memory IDs before storing: {', '.join(conflict_ids)}."
+    annotated["resolution"] = " ".join(part for part in (resolution, conflict_note) if part)[:1200]
+    return annotated
+
+
+def find_capture_conflicts(memory: dict) -> list[str]:
+    title = str(memory.get("title") or "").strip()
+    memory_type = str(memory.get("type") or "").strip()
+    if not title or not memory_type:
+        return []
+
+    params = {
+        "query": title,
+        "type": memory_type,
+        "limit": "10",
+    }
+    project = str(memory.get("project") or "").strip()
+    if project:
+        params["project"] = project
+
+    file_paths = [str(path) for path in memory.get("file_paths") or [] if str(path).strip()]
+    if file_paths:
+        params["path"] = file_paths[0]
+
+    request = urllib.request.Request(f"{API_URL}/memory/search?{urllib.parse.urlencode(params)}")
+    try:
+        with urllib.request.urlopen(request, timeout=3) as response:
+            body = json.loads(response.read().decode("utf-8"))
+    except Exception:
+        return []
+
+    conflicts = []
+    entry_key = conflict_key(title)
+    for result in body.get("results", []):
+        entry = result.get("entry", {})
+        if conflict_key(str(entry.get("title") or "")) != entry_key:
+            continue
+        if not scopes_overlap([str(path) for path in entry.get("file_paths") or []], file_paths):
+            continue
+        entry_id = str(entry.get("id") or "").strip()
+        if entry_id:
+            conflicts.append(entry_id)
+    return conflicts
+
+
+def conflict_key(value: str) -> str:
+    return " ".join(part.strip(".,;!?()[]{}'\"`").lower() for part in value.split())
+
+
+def scopes_overlap(existing_paths: list[str], new_paths: list[str]) -> bool:
+    if not existing_paths or not new_paths:
+        return True
+    normalized_existing = [normalize_path(path) for path in existing_paths]
+    for path in new_paths:
+        requested = normalize_path(path)
+        for existing in normalized_existing:
+            if existing == requested or existing.startswith(f"{requested}/") or requested.startswith(f"{existing}/"):
+                return True
+    return False
+
+
+def normalize_path(path: str) -> str:
+    return path.strip().replace("\\", "/").strip("/").lower()
 
 
 if __name__ == "__main__":

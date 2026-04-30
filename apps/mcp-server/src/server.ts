@@ -8,7 +8,18 @@ interface JsonRpcRequest {
   params?: Record<string, JsonValue>;
 }
 
+declare const Bun: {
+  serve: (options: {
+    hostname: string;
+    port: number;
+    fetch: (request: Request) => Response | Promise<Response>;
+  }) => unknown;
+};
+
 const apiUrl = (process.env.CODEX_MEM_API_URL ?? "http://127.0.0.1:8000").replace(/\/$/, "");
+const transport = (process.env.CODEX_MEM_MCP_TRANSPORT ?? "stdio").toLowerCase();
+const httpHost = process.env.CODEX_MEM_MCP_HOST ?? "127.0.0.1";
+const httpPort = Number(process.env.CODEX_MEM_MCP_PORT ?? 3333);
 
 const tools: JsonValue[] = [
   {
@@ -46,6 +57,70 @@ const tools: JsonValue[] = [
     }
   },
   {
+    name: "get_memory",
+    description: "Fetch a full Codex-Mem entry by id.",
+    inputSchema: {
+      type: "object",
+      required: ["id"],
+      properties: {
+        id: { type: "string" }
+      }
+    }
+  },
+  {
+    name: "timeline",
+    description: "Fetch memory history around a memory id or around entries matching a query.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        memory_id: { type: "string" },
+        query: { type: "string" },
+        limit: { type: "number", minimum: 1, maximum: 25 }
+      }
+    }
+  },
+  {
+    name: "get_observations",
+    description: "Fetch full memory observations for a batch of memory ids.",
+    inputSchema: {
+      type: "object",
+      required: ["ids"],
+      properties: {
+        ids: { type: "array", items: { type: "string" }, minItems: 1, maxItems: 25 }
+      }
+    }
+  },
+  {
+    name: "update_memory",
+    description: "Update an existing Codex-Mem entry by id.",
+    inputSchema: {
+      type: "object",
+      required: ["id"],
+      properties: {
+        id: { type: "string" },
+        type: { type: "string", enum: ["fact", "decision", "bug", "solution", "pattern"] },
+        title: { type: "string" },
+        context: { type: "string" },
+        resolution: { type: "string" },
+        confidence: { type: "number", minimum: 0, maximum: 1 },
+        importance: { type: "number", minimum: 0, maximum: 1 },
+        pinned: { type: "boolean" },
+        file_paths: { type: "array", items: { type: "string" } },
+        tags: { type: "array", items: { type: "string" } },
+        source: { type: "string" },
+        project: { type: "string" }
+      }
+    }
+  },
+  {
+    name: "debug_injection",
+    description: "Fetch the latest Codex-Mem injection debug trace.",
+    inputSchema: {
+      type: "object",
+      properties: {}
+    }
+  },
+  {
     name: "delete_memory",
     description: "Delete a Codex-Mem entry by id.",
     inputSchema: {
@@ -60,13 +135,40 @@ const tools: JsonValue[] = [
 
 let buffer = "";
 
-process.stdin.setEncoding("utf8");
-process.stdin.on("data", (chunk) => {
-  buffer += chunk;
-  drainBuffer().catch((error: unknown) => {
-    writeError(null, error instanceof Error ? error.message : String(error));
+if (transport === "http") {
+  startHttpServer();
+} else {
+  startStdioServer();
+}
+
+function startStdioServer(): void {
+  process.stdin.setEncoding("utf8");
+  process.stdin.on("data", (chunk) => {
+    buffer += chunk;
+    drainBuffer().catch((error: unknown) => {
+      writeError(null, error instanceof Error ? error.message : String(error));
+    });
   });
-});
+}
+
+function startHttpServer(): void {
+  Bun.serve({
+    hostname: httpHost,
+    port: httpPort,
+    async fetch(request: Request): Promise<Response> {
+      const url = new URL(request.url);
+      if (request.method === "GET" && url.pathname === "/health") {
+        return Response.json({ status: "ok", transport: "http" });
+      }
+      if (request.method !== "POST" || url.pathname !== "/mcp") {
+        return Response.json({ error: "Not found" }, { status: 404 });
+      }
+      const payload = await request.json() as JsonRpcRequest;
+      const response = await dispatchMessage(payload);
+      return Response.json(response ?? {});
+    }
+  });
+}
 
 async function drainBuffer(): Promise<void> {
   while (true) {
@@ -91,28 +193,30 @@ async function drainBuffer(): Promise<void> {
 }
 
 async function handleMessage(request: JsonRpcRequest): Promise<void> {
-  if (request.id === undefined) return;
+  const response = await dispatchMessage(request);
+  if (response) writeMessage(response);
+}
+
+async function dispatchMessage(request: JsonRpcRequest): Promise<JsonValue | null> {
+  if (request.id === undefined) return null;
 
   try {
     switch (request.method) {
       case "initialize":
-        writeResult(request.id, {
+        return rpcResult(request.id, {
           protocolVersion: "2024-11-05",
           capabilities: { tools: {} },
           serverInfo: { name: "codex-mem", version: "0.1.0" }
         });
-        return;
       case "tools/list":
-        writeResult(request.id, { tools });
-        return;
+        return rpcResult(request.id, { tools });
       case "tools/call":
-        writeResult(request.id, await callTool(request.params ?? {}));
-        return;
+        return rpcResult(request.id, await callTool(request.params ?? {}));
       default:
-        writeError(request.id, `Unknown method: ${request.method}`, -32601);
+        return rpcError(request.id, `Unknown method: ${request.method}`, -32601);
     }
   } catch (error) {
-    writeError(request.id, error instanceof Error ? error.message : String(error));
+    return rpcError(request.id, error instanceof Error ? error.message : String(error));
   }
 }
 
@@ -140,6 +244,60 @@ async function callTool(params: Record<string, JsonValue>): Promise<JsonValue> {
       }
       const results = await apiRequest(`/memory/search?${searchParams}`);
       return toolText(JSON.stringify(results, null, 2));
+    }
+    case "get_memory": {
+      const id = String(args.id ?? "");
+      if (!id) throw new Error("get_memory requires id.");
+      const entry = await apiRequest(`/memory/${encodeURIComponent(id)}`);
+      return toolText(JSON.stringify(entry, null, 2));
+    }
+    case "timeline": {
+      const memoryId = String(args.memory_id ?? "");
+      const query = String(args.query ?? "");
+      const limit = Number(args.limit ?? 10);
+      if (memoryId) {
+        const searchParams = new URLSearchParams({ memory_id: memoryId, limit: String(limit) });
+        const history = await apiRequest(`/memory/history?${searchParams}`);
+        return toolText(JSON.stringify({ memory_id: memoryId, history }, null, 2));
+      }
+      if (!query) throw new Error("timeline requires memory_id or query.");
+
+      const searchParams = new URLSearchParams({ query, limit: String(Math.min(limit, 5)) });
+      const search = await apiRequest(`/memory/search?${searchParams}`) as { results?: { entry?: { id?: string; title?: string } }[] };
+      const entries = await Promise.all(
+        (search.results ?? []).map(async (result) => {
+          const entry = result.entry ?? {};
+          const id = String(entry.id ?? "");
+          const historyParams = new URLSearchParams({ memory_id: id, limit: String(limit) });
+          const history = id ? await apiRequest(`/memory/history?${historyParams}`) : [];
+          return { memory_id: id, title: entry.title ?? "", history };
+        })
+      );
+      return toolText(JSON.stringify({ query, entries }, null, 2));
+    }
+    case "get_observations": {
+      if (!Array.isArray(args.ids) || args.ids.length === 0) {
+        throw new Error("get_observations requires ids.");
+      }
+      const ids = args.ids.map((id) => String(id)).filter(Boolean).slice(0, 25);
+      const observations = await Promise.all(
+        ids.map((id) => apiRequest(`/memory/${encodeURIComponent(id)}`))
+      );
+      return toolText(JSON.stringify({ observations }, null, 2));
+    }
+    case "update_memory": {
+      const id = String(args.id ?? "");
+      if (!id) throw new Error("update_memory requires id.");
+      const { id: _id, ...payload } = args;
+      const entry = await apiRequest(`/memory/${encodeURIComponent(id)}`, {
+        method: "PATCH",
+        body: JSON.stringify(payload)
+      });
+      return toolText(JSON.stringify(entry, null, 2));
+    }
+    case "debug_injection": {
+      const trace = await apiRequest("/memory/debug/injection");
+      return toolText(JSON.stringify(trace, null, 2));
     }
     case "delete_memory": {
       const id = String(args.id ?? "");
@@ -171,11 +329,19 @@ function toolText(text: string): JsonValue {
 }
 
 function writeResult(id: string | number, result: JsonValue): void {
-  writeMessage({ jsonrpc: "2.0", id, result });
+  writeMessage(rpcResult(id, result));
 }
 
 function writeError(id: string | number | null, message: string, code = -32000): void {
-  writeMessage({ jsonrpc: "2.0", id, error: { code, message } });
+  writeMessage(rpcError(id, message, code));
+}
+
+function rpcResult(id: string | number, result: JsonValue): JsonValue {
+  return { jsonrpc: "2.0", id, result };
+}
+
+function rpcError(id: string | number | null, message: string, code = -32000): JsonValue {
+  return { jsonrpc: "2.0", id, error: { code, message } };
 }
 
 function writeMessage(payload: JsonValue): void {

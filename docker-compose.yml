@@ -17,7 +17,12 @@ services:
     build:
       context: .
       dockerfile: infra/docker/mcp.Dockerfile
+    ports:
+      - "3333:3333"
     environment:
       CODEX_MEM_API_URL: http://api:8000
+      CODEX_MEM_MCP_TRANSPORT: http
+      CODEX_MEM_MCP_HOST: 0.0.0.0
+      CODEX_MEM_MCP_PORT: 3333
     depends_on:
       - api

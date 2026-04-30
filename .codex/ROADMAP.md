@@ -79,9 +79,9 @@ This is the working checklist for turning Codex-Mem into a full "brain" for Code
 - [x] Normalize extracted observations into memory entries.
 - [x] Filter low-value capture: small talk, guesses, temporary logs, obvious facts.
 - [x] Detect duplicate and near-duplicate extracted memories.
-- [ ] Detect conflicts during capture.
-- [ ] Add approval mode for auto-captured memory before storing.
-- [ ] Add passive mode where capture suggestions are shown but not stored.
+- [x] Detect conflicts during capture.
+- [x] Add approval mode for auto-captured memory before storing.
+- [x] Add passive mode where capture suggestions are shown but not stored.
 
 ## 5. Codex Integration And Agent Flow
 
@@ -91,13 +91,13 @@ This is the working checklist for turning Codex-Mem into a full "brain" for Code
 - [x] Inject relevant memory as additional Codex context.
 - [x] Add local plugin metadata and skill for memory search.
 - [x] Add plugin MCP config.
-- [ ] Add `PostToolUse` hook for tool-result capture.
-- [ ] Add mode config: passive, active, debug.
-- [ ] Add per-project hook enable/disable settings.
-- [ ] Add automatic startup checks for API availability.
-- [ ] Add graceful degraded mode when API is offline.
-- [ ] Add visible debug output showing injected entries.
-- [ ] Add command examples for installing/enabling repo-local plugin in Codex.
+- [x] Add `PostToolUse` hook for tool-result capture.
+- [x] Add mode config: passive, active, debug.
+- [x] Add per-project hook enable/disable settings.
+- [x] Add automatic startup checks for API availability.
+- [x] Add graceful degraded mode when API is offline.
+- [x] Add visible debug output showing injected entries.
+- [x] Add command examples for installing/enabling repo-local plugin in Codex.
 
 ## 6. MCP And External Memory Server
 
@@ -105,27 +105,27 @@ This is the working checklist for turning Codex-Mem into a full "brain" for Code
 - [x] Implement MCP `query_memory`.
 - [x] Implement MCP `delete_memory`.
 - [x] Verify MCP smoke path over stdio.
-- [ ] Add MCP `get_memory` by ID.
-- [ ] Add MCP `timeline` around a memory or query.
-- [ ] Add MCP `get_observations` batch fetch for progressive disclosure.
-- [ ] Add MCP `update_memory`.
-- [ ] Add MCP `debug_injection`.
-- [ ] Add server capability tests and protocol fixtures.
-- [ ] Add support for remote HTTP MCP deployment.
-- [ ] Add compatibility notes for Cursor, Claude Code, and other agents.
+- [x] Add MCP `get_memory` by ID.
+- [x] Add MCP `timeline` around a memory or query.
+- [x] Add MCP `get_observations` batch fetch for progressive disclosure.
+- [x] Add MCP `update_memory`.
+- [x] Add MCP `debug_injection`.
+- [x] Add server capability tests and protocol fixtures.
+- [x] Add support for remote HTTP MCP deployment.
+- [x] Add compatibility notes for Cursor, Claude Code, and other agents.
 
 ## 7. Smart Memory Layer
 
-- [ ] Detect repeated errors across sessions.
-- [ ] Detect frequently reused solutions.
-- [ ] Promote stable high-value memories into best practices.
-- [ ] Detect anti-patterns from repeated failures.
-- [ ] Add summary memory generation.
-- [ ] Add stale memory decay.
-- [ ] Add automatic archival of low-confidence or unused memory.
-- [ ] Add memory consolidation job.
-- [ ] Add cross-entry linking: bug -> solution -> pattern.
-- [ ] Add confidence recalculation from usage and validation.
+- [x] Detect repeated errors across sessions.
+- [x] Detect frequently reused solutions.
+- [x] Promote stable high-value memories into best practices.
+- [x] Detect anti-patterns from repeated failures.
+- [x] Add summary memory generation.
+- [x] Add stale memory decay.
+- [x] Add automatic archival of low-confidence or unused memory.
+- [x] Add memory consolidation job.
+- [x] Add cross-entry linking: bug -> solution -> pattern.
+- [x] Add confidence recalculation from usage and validation.
 
 ## 8. Memory Format And Exports
 
@@ -134,22 +134,22 @@ This is the working checklist for turning Codex-Mem into a full "brain" for Code
 - [x] Export `.codex/INDEX.json`.
 - [x] Maintain `.codex/SOUL.md` and `.codex/CONTEXT.md`.
 - [x] Add `.codex/HISTORY.json` or equivalent history export.
-- [ ] Add Markdown import back into SQLite.
-- [ ] Add round-trip tests for Markdown export/import.
-- [ ] Add repo-sync mode for selected memory entries.
-- [ ] Add global memory scope outside a single project.
-- [ ] Add memory migration/version metadata.
+- [x] Add Markdown import back into SQLite.
+- [x] Add round-trip tests for Markdown export/import.
+- [x] Add repo-sync mode for selected memory entries.
+- [x] Add global memory scope outside a single project.
+- [x] Add memory migration/version metadata.
 
 ## 9. Configuration
 
 - [x] Add `.env.example`.
 - [x] Add env config for API URL, DB path, project, inject limit, token budget.
 - [x] Add Docker config for API and MCP.
-- [ ] Add first-class config file, e.g. `.codex/mem.config.json`.
-- [ ] Add per-project rules for what to save and ignore.
-- [ ] Add path ignore filters for logs, generated files, secrets, and vendor directories.
-- [ ] Add sensitivity levels for capture.
-- [ ] Add model/provider config for embeddings and summarization.
+- [x] Add first-class config file, e.g. `.codex/mem.config.json`.
+- [x] Add per-project rules for what to save and ignore.
+- [x] Add path ignore filters for logs, generated files, secrets, and vendor directories.
+- [x] Add sensitivity levels for capture.
+- [x] Add model/provider config for embeddings and summarization.
 - [ ] Add debug/verbose config.
 - [ ] Add config validation and helpful diagnostics.
 

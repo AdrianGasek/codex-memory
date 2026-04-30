@@ -1,0 +1,27 @@
+{
+  "project": "codex-brain",
+  "inject_limit": 5,
+  "token_budget": 1200,
+  "vector_backend": "local",
+  "embeddings": {
+    "provider": "local",
+    "model": "local-hash"
+  },
+  "summarization": {
+    "provider": "local",
+    "model": "extractive"
+  },
+  "capture": {
+    "mode": "active",
+    "sensitivity": "standard",
+    "ignore_paths": ["data/db", "data/vectors", "node_modules", "dist", "logs", "*.log", "vendor"],
+    "no_store_tags": ["private", "no-store"]
+  },
+  "debug": {
+    "verbose": false
+  },
+  "sync": {
+    "enabled": false,
+    "scope": "local"
+  }
+}

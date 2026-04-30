@@ -240,3 +240,291 @@ def test_stop_hook_drops_near_duplicate_candidates():
     )
 
     assert len(memories) == 1
+
+
+def test_auto_capture_annotates_detected_conflicts(monkeypatch):
+    hook_memory = load_hook_module()
+
+    monkeypatch.setattr(hook_memory, "find_capture_conflicts", lambda _memory: ["mem_old"])
+
+    annotated = hook_memory.annotate_capture_conflicts(
+        {
+            "type": "decision",
+            "title": "Use SQLite for memory storage",
+            "context": "Later capture.",
+            "resolution": "Keep SQLite.",
+            "tags": ["auto-capture"],
+            "source": "stop-hook",
+        }
+    )
+
+    assert annotated["tags"] == ["auto-capture", "conflict", "latest-wins"]
+    assert "mem_old" in annotated["resolution"]
+
+
+def test_auto_capture_conflict_detection_respects_path_scope(monkeypatch):
+    hook_memory = load_hook_module()
+
+    class FakeResponse:
+        status = 200
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def read(self):
+            return json.dumps(
+                {
+                    "results": [
+                        {
+                            "entry": {
+                                "id": "mem_api",
+                                "title": "Use request validation",
+                                "file_paths": ["apps/api/app/routes/memory.py"],
+                            }
+                        },
+                        {
+                            "entry": {
+                                "id": "mem_cli",
+                                "title": "Use request validation",
+                                "file_paths": ["apps/cli/src/commands/remember.ts"],
+                            }
+                        },
+                    ]
+                }
+            ).encode("utf-8")
+
+    monkeypatch.setattr(hook_memory.urllib.request, "urlopen", lambda *_args, **_kwargs: FakeResponse())
+
+    conflicts = hook_memory.find_capture_conflicts(
+        {
+            "type": "decision",
+            "title": "Use request validation",
+            "file_paths": ["apps/api/app/routes/memory.py"],
+        }
+    )
+
+    assert conflicts == ["mem_api"]
+
+
+def test_approval_mode_queues_auto_capture_without_posting(monkeypatch, tmp_path):
+    monkeypatch.setenv("CODEX_MEM_CAPTURE_MODE", "approval")
+    monkeypatch.chdir(tmp_path)
+    hook_memory = load_hook_module()
+
+    def fail_urlopen(*_args, **_kwargs):
+        raise AssertionError("approval mode should not post to the API")
+
+    monkeypatch.setattr(hook_memory.urllib.request, "urlopen", fail_urlopen)
+    stored = hook_memory.post_memory(
+        {
+            "type": "solution",
+            "title": "Capture requires approval",
+            "context": "Auto-captured memory should wait for review.",
+            "resolution": "Queue the payload before storing.",
+            "tags": ["auto-capture"],
+            "source": "stop-hook",
+        }
+    )
+
+    queued = tmp_path / ".codex" / "PENDING_MEMORY.jsonl"
+    body = json.loads(queued.read_text(encoding="utf-8").strip())
+
+    assert stored is True
+    assert body["status"] == "pending"
+    assert body["memory"]["title"] == "Capture requires approval"
+
+
+def test_passive_mode_collects_visible_suggestions_without_storing(monkeypatch, tmp_path):
+    monkeypatch.setenv("CODEX_MEM_CAPTURE_MODE", "passive")
+    monkeypatch.chdir(tmp_path)
+    hook_memory = load_hook_module()
+
+    def fail_urlopen(*_args, **_kwargs):
+        raise AssertionError("passive mode should not post to the API")
+
+    monkeypatch.setattr(hook_memory.urllib.request, "urlopen", fail_urlopen)
+    stored = hook_memory.post_memory(
+        {
+            "type": "solution",
+            "title": "Capture can be suggested",
+            "context": "Passive mode should show this without storage.",
+            "resolution": "Collect the payload for hook output.",
+            "tags": ["auto-capture"],
+            "source": "stop-hook",
+        }
+    )
+
+    summary = hook_memory.passive_capture_summary()
+
+    assert stored is True
+    assert not (tmp_path / ".codex" / "PENDING_MEMORY.jsonl").exists()
+    assert "Codex-Mem passive capture suggestions:" in summary
+    assert "[solution] Capture can be suggested (stop-hook)" in summary
+
+
+def test_mode_config_supports_debug_and_overrides_capture_mode(monkeypatch):
+    monkeypatch.setenv("CODEX_MEM_CAPTURE_MODE", "passive")
+    monkeypatch.setenv("CODEX_MEM_MODE", "debug")
+    hook_memory = load_hook_module()
+
+    assert hook_memory.CAPTURE_MODE == "debug"
+    assert hook_memory.debug_capture_summary("Stop", 2) == "Codex-Mem debug: mode=debug, hook=Stop, captured=2."
+
+
+def test_hook_enable_disable_settings(monkeypatch):
+    monkeypatch.setenv("CODEX_MEM_DISABLED_HOOKS", "stop, userpromptsubmit")
+    hook_memory = load_hook_module()
+
+    assert hook_memory.hook_enabled("stop") is False
+    assert hook_memory.hook_enabled("user-prompt") is False
+    assert hook_memory.hook_enabled("post-tool-use") is True
+
+
+def test_all_hooks_can_be_disabled(monkeypatch):
+    monkeypatch.setenv("CODEX_MEM_HOOKS_ENABLED", "false")
+    hook_memory = load_hook_module()
+
+    assert hook_memory.hook_enabled("session-start") is False
+    assert hook_memory.hook_enabled("stop") is False
+
+
+def test_startup_api_availability_check(monkeypatch):
+    hook_memory = load_hook_module()
+
+    class FakeResponse:
+        status = 200
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def read(self):
+            return json.dumps({"status": "ok"}).encode("utf-8")
+
+    monkeypatch.setattr(hook_memory.urllib.request, "urlopen", lambda *_args, **_kwargs: FakeResponse())
+
+    assert hook_memory.api_available() is True
+
+
+def test_startup_api_availability_check_fails_closed(monkeypatch):
+    hook_memory = load_hook_module()
+
+    def fail_urlopen(*_args, **_kwargs):
+        raise OSError("offline")
+
+    monkeypatch.setattr(hook_memory.urllib.request, "urlopen", fail_urlopen)
+
+    assert hook_memory.api_available() is False
+
+
+def test_degraded_output_continues_without_injection():
+    hook_memory = load_hook_module()
+
+    output = hook_memory.degraded_output("offline")
+
+    assert output == {
+        "continue": True,
+        "suppressOutput": True,
+        "degraded": True,
+        "message": "offline",
+    }
+
+
+def test_degraded_output_can_be_visible():
+    hook_memory = load_hook_module()
+
+    output = hook_memory.degraded_output("startup failed", visible=True)
+
+    assert output["continue"] is True
+    assert output["suppressOutput"] is False
+    assert output["degraded"] is True
+
+
+def test_debug_injection_summary_lists_injected_entries():
+    hook_memory = load_hook_module()
+
+    summary = hook_memory.debug_injection_summary(
+        {
+            "trace": {
+                "requested_limit": 3,
+                "candidate_count": 5,
+                "injected_count": 1,
+                "entries": [
+                    {
+                        "memory_id": "mem_123",
+                        "title": "Use SQLite first",
+                        "score": 4.2,
+                        "reason": "title matched query",
+                    }
+                ],
+            }
+        }
+    )
+
+    assert "requested_limit=3 candidate_count=5 injected_count=1" in summary
+    assert "Use SQLite first (mem_123, score=4.20): title matched query" in summary
+
+
+def test_fetch_context_reads_additional_context(monkeypatch):
+    hook_memory = load_hook_module()
+
+    class FakeResponse:
+        status = 200
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def read(self):
+            return json.dumps({"additional_context": "memory context"}).encode("utf-8")
+
+    monkeypatch.setattr(hook_memory.urllib.request, "urlopen", lambda *_args, **_kwargs: FakeResponse())
+
+    assert hook_memory.fetch_context("storage") == "memory context"
+
+
+def test_project_no_store_tags_skip_capture(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    config_dir = tmp_path / ".codex"
+    config_dir.mkdir()
+    (config_dir / "mem.config.json").write_text(
+        json.dumps({"capture": {"no_store_tags": ["private", "no-store"]}}),
+        encoding="utf-8",
+    )
+    hook_memory = load_hook_module()
+
+    assert hook_memory.should_skip_memory({"tags": ["auto-capture", "private"]}) is True
+    assert hook_memory.should_skip_memory({"tags": ["auto-capture"]}) is False
+
+
+def test_git_diff_capture_uses_configured_ignore_paths(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    config_dir = tmp_path / ".codex"
+    config_dir.mkdir()
+    (config_dir / "mem.config.json").write_text(
+        json.dumps({"capture": {"ignore_paths": ["logs", "*.log", "vendor"]}}),
+        encoding="utf-8",
+    )
+    hook_memory = load_hook_module()
+
+    assert hook_memory.git_ignore_pathspecs() == [":!logs", ":!*.log", ":!vendor"]
+
+
+def test_capture_sensitivity_controls_minimum_length(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    config_dir = tmp_path / ".codex"
+    config_dir.mkdir()
+    (config_dir / "mem.config.json").write_text(
+        json.dumps({"capture": {"sensitivity": "strict"}}),
+        encoding="utf-8",
+    )
+    hook_memory = load_hook_module()
+
+    assert hook_memory.capture_min_chars() == 140
