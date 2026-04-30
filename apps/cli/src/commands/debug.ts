@@ -15,9 +15,17 @@ export async function debugCommand(args: string[]): Promise<void> {
   const profile = profileOption as RetrievalProfile | undefined;
   const client = new MemoryClient();
   const health = await client.health();
+  const diagnostics = await client.configDiagnostics();
   const injection = await client.inject(query, limit, profile);
 
   console.log(`API: ${health.status}`);
+  console.log(`Config: ${diagnostics.config_path}`);
+  if (diagnostics.diagnostics.length) {
+    console.log("Config diagnostics:");
+    for (const diagnostic of diagnostics.diagnostics) {
+      console.log(`- ${diagnostic}`);
+    }
+  }
   console.log("");
   console.log(injection || "No injection context available.");
 }

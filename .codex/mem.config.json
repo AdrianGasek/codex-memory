@@ -15,13 +15,22 @@
     "mode": "active",
     "sensitivity": "standard",
     "ignore_paths": ["data/db", "data/vectors", "node_modules", "dist", "logs", "*.log", "vendor"],
-    "no_store_tags": ["private", "no-store"]
+    "no_store_tags": ["private", "no-store"],
+    "no_store_paths": ["secrets", "private", "*.pem", "*.key"]
   },
   "debug": {
-    "verbose": false
+    "verbose": false,
+    "capture_log_enabled": false,
+    "capture_log": ".codex/CAPTURE_DEBUG.jsonl"
   },
   "sync": {
     "enabled": false,
     "scope": "local"
+  },
+  "security": {
+    "db_encryption_enabled": false
+  },
+  "team": {
+    "backend": "local"
   }
 }

@@ -1,17 +1,26 @@
 from __future__ import annotations
 
+import base64
 from collections.abc import Iterable
 from datetime import datetime, timedelta, timezone
+import hashlib
 from pathlib import Path
 import json
+import os
 import re
 import sqlite3
 from uuid import uuid4
+
+from cryptography.exceptions import InvalidTag
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 
 from app.core.models import (
     AntiPattern,
     InjectionTrace,
     InjectionTraceEntry,
+    MemoryAuditEntry,
     MemoryCreate,
     MemoryEntry,
     MemoryHistoryEntry,
@@ -19,6 +28,7 @@ from app.core.models import (
     MemoryUpdate,
     RepeatedError,
     ReusedSolution,
+    SearchDebugResult,
     SearchResult,
     new_entry,
 )
@@ -27,7 +37,16 @@ from app.storage.vector import LocalVectorStore, VectorStore
 
 SECRET_PATTERNS = [
     re.compile(r"sk-[A-Za-z0-9_-]{20,}"),
+    re.compile(r"\bAKIA[0-9A-Z]{16}\b"),
+    re.compile(r"\bgh[pousr]_[A-Za-z0-9_]{30,}\b"),
+    re.compile(r"\bxox[baprs]-[A-Za-z0-9-]{20,}\b"),
+    re.compile(r"\beyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b"),
+    re.compile(r"(?is)-----BEGIN [A-Z ]*PRIVATE KEY-----.*?-----END [A-Z ]*PRIVATE KEY-----"),
+    re.compile(r"(?i)\bbearer\s+[A-Za-z0-9._~+/-]{20,}={0,2}"),
     re.compile(r"(?i)(api[_-]?key|token|secret|password)\s*[:=]\s*['\"]?[^'\"\s]+"),
+    re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b"),
+    re.compile(r"\b\d{3}-\d{2}-\d{4}\b"),
+    re.compile(r"(?<!\d)(?:\+?\d[\d .()-]{7,}\d)(?!\d)"),
 ]
 SCHEMA_VERSION = "1"
 
@@ -39,11 +58,13 @@ class MemoryStore:
         codex_dir: Path,
         default_project: str,
         vector_store: VectorStore | None = None,
+        encryption_key: str | None = None,
     ) -> None:
         self.db_path = db_path
         self.codex_dir = codex_dir
         self.default_project = default_project
         self.vector_store = vector_store or LocalVectorStore()
+        self.encryption_key = encryption_key
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self.codex_dir.mkdir(parents=True, exist_ok=True)
         self._init_db()
@@ -125,6 +146,19 @@ class MemoryStore:
             )
             conn.execute(
                 """
+                CREATE TABLE IF NOT EXISTS memory_audit (
+                    id TEXT PRIMARY KEY,
+                    memory_id TEXT NOT NULL,
+                    action TEXT NOT NULL,
+                    title TEXT NOT NULL,
+                    source TEXT NOT NULL,
+                    project TEXT NOT NULL,
+                    timestamp TEXT NOT NULL
+                )
+                """
+            )
+            conn.execute(
+                """
                 CREATE TABLE IF NOT EXISTS memory_metadata (
                     key TEXT PRIMARY KEY,
                     value TEXT NOT NULL
@@ -154,6 +188,8 @@ class MemoryStore:
             conn.execute("CREATE INDEX IF NOT EXISTS idx_injection_traces_timestamp ON injection_traces(timestamp)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_memory_links_from ON memory_links(from_id)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_memory_links_to ON memory_links(to_id)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_memory_audit_timestamp ON memory_audit(timestamp)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_memory_audit_memory_id ON memory_audit(memory_id)")
 
     def _ensure_column(self, conn: sqlite3.Connection, name: str, definition: str) -> None:
         columns = {row["name"] for row in conn.execute("PRAGMA table_info(memories)").fetchall()}
@@ -164,6 +200,7 @@ class MemoryStore:
         defaults = {
             "MEMORY.md": "# MEMORY\n\nCodex-Mem exports validated memory entries here from SQLite.\n",
             "HISTORY.json": "[]\n",
+            "AUDIT.json": "[]\n",
             "SOUL.md": "# SOUL\n\nProject-level memory principles and agent preferences.\n",
             "CONTEXT.md": "# CONTEXT\n\nCurrent working context for Codex-Mem sessions.\n",
         }
@@ -231,9 +268,9 @@ class MemoryStore:
                 (
                     entry.id,
                     entry.type.value,
-                    entry.title,
-                    entry.context,
-                    entry.resolution,
+                    self._protect_text(entry.title),
+                    self._protect_text(entry.context),
+                    self._protect_text(entry.resolution),
                     entry.confidence,
                     entry.importance,
                     int(entry.pinned),
@@ -271,6 +308,7 @@ class MemoryStore:
         created_before: str | None = None,
         track_usage: bool = True,
     ) -> list[SearchResult]:
+        project = project or self.default_project
         where = []
         params: list[str | int] = []
         if memory_type:
@@ -328,17 +366,96 @@ class MemoryStore:
             self._record_usage(selected, retrieved_delta=1, injected_delta=0)
         return selected
 
+    def search_debug(
+        self,
+        query: str = "",
+        limit: int = 10,
+        memory_type: str | None = None,
+        project: str | None = None,
+        tags: Iterable[str] | None = None,
+        path: str | None = None,
+        created_after: str | None = None,
+        created_before: str | None = None,
+    ) -> list[SearchDebugResult]:
+        project = project or self.default_project
+        where = []
+        params: list[str | int] = []
+        if memory_type:
+            where.append("type = ?")
+            params.append(memory_type)
+        if project:
+            if project != "global":
+                where.append("(project = ? OR project = ?)")
+                params.extend([project, "global"])
+            else:
+                where.append("project = ?")
+                params.append(project)
+        if created_after:
+            where.append("timestamp >= ?")
+            params.append(self._normalize_timestamp_filter(created_after))
+        if created_before:
+            where.append("timestamp <= ?")
+            params.append(self._normalize_timestamp_filter(created_before))
+        where.append("status = ?")
+        params.append("active")
+
+        sql = "SELECT * FROM memories"
+        if where:
+            sql += " WHERE " + " AND ".join(where)
+        sql += " ORDER BY timestamp DESC LIMIT ?"
+        params.append(max(limit * 8, limit))
+
+        requested_tags = {tag.strip().lower() for tag in tags or [] if tag.strip()}
+        requested_path = self._normalize_path(path or "")
+        query_embedding = self.vector_store.embed(query) if query.strip() else []
+        debug_results: list[SearchDebugResult] = []
+
+        with self._connect() as conn:
+            rows = conn.execute(sql, params).fetchall()
+
+        for row in rows:
+            entry = self._from_row(row)
+            if requested_tags and not requested_tags.intersection(entry.tags):
+                continue
+            if requested_path and not self._path_matches(entry.file_paths, requested_path):
+                continue
+            ranked = rank_memory(entry, query)
+            semantic_score = self._semantic_score(row, entry, query_embedding)
+            if query.strip() and not ranked.matched and semantic_score < 0.25:
+                continue
+            components = dict(ranked.components)
+            components["semantic"] = round(semantic_score * 2.0, 6)
+            score = round(sum(components.values()), 6)
+            reason = ranked.reason
+            if semantic_score >= 0.25:
+                reason = f"{reason}; semantic embedding similarity"
+            debug_results.append(
+                SearchDebugResult(
+                    entry=entry,
+                    score=score,
+                    matched=ranked.matched or semantic_score >= 0.25,
+                    reason=reason,
+                    components=components,
+                )
+            )
+
+        debug_results.sort(key=lambda item: (item.score, item.entry.timestamp), reverse=True)
+        return debug_results[:limit]
+
     def delete(self, memory_id: str) -> bool:
         with self._connect() as conn:
             existing = conn.execute("SELECT * FROM memories WHERE id = ?", (memory_id,)).fetchone()
             if not existing:
                 return False
-            self._record_history(conn, self._from_row(existing), "delete")
+            entry = self._from_row(existing)
+            self._record_history(conn, entry, "delete")
+            self._record_audit(conn, entry, "delete")
             cursor = conn.execute("DELETE FROM memories WHERE id = ?", (memory_id,))
             deleted = cursor.rowcount > 0
         if deleted:
             self.export_markdown()
             self.export_history()
+            self.export_audit()
         return deleted
 
     def get(self, memory_id: str) -> MemoryEntry | None:
@@ -384,9 +501,9 @@ class MemoryStore:
                 """,
                 (
                     updated.type.value,
-                    updated.title,
-                    updated.context,
-                    updated.resolution,
+                    self._protect_text(updated.title),
+                    self._protect_text(updated.context),
+                    self._protect_text(updated.resolution),
                     updated.confidence,
                     updated.importance,
                     int(updated.pinned),
@@ -401,10 +518,35 @@ class MemoryStore:
                 ),
             )
             self._record_history(conn, updated, "update")
+            self._record_audit(conn, updated, "update")
 
         self.export_markdown()
         self.export_history()
+        self.export_audit()
         return updated
+
+    def promote_to_global(self, memory_id: str) -> MemoryEntry | None:
+        entry = self.get(memory_id)
+        if not entry:
+            return None
+        if entry.project == "global":
+            return entry
+        tags = sorted(set(entry.tags + ["cross-project", "global"]))
+        return self.store(
+            MemoryCreate(
+                type=entry.type,
+                title=entry.title,
+                context=entry.context,
+                resolution=entry.resolution,
+                confidence=entry.confidence,
+                importance=entry.importance,
+                pinned=entry.pinned,
+                file_paths=entry.file_paths,
+                tags=tags,
+                source="cross-project",
+                project="global",
+            )
+        )
 
     def history(self, memory_id: str | None = None, limit: int = 100) -> list[MemoryHistoryEntry]:
         params: list[str | int] = []
@@ -418,6 +560,19 @@ class MemoryStore:
         with self._connect() as conn:
             rows = conn.execute(sql, params).fetchall()
         return [self._history_from_row(row) for row in rows]
+
+    def audit_log(self, memory_id: str | None = None, limit: int = 100) -> list[MemoryAuditEntry]:
+        params: list[str | int] = []
+        sql = "SELECT * FROM memory_audit"
+        if memory_id:
+            sql += " WHERE memory_id = ?"
+            params.append(memory_id)
+        sql += " ORDER BY timestamp DESC LIMIT ?"
+        params.append(limit)
+
+        with self._connect() as conn:
+            rows = conn.execute(sql, params).fetchall()
+        return [self._audit_from_row(row) for row in rows]
 
     def inject_context(self, query: str, limit: int, token_budget: int) -> tuple[str, list[SearchResult], InjectionTrace]:
         results = self.search(query=query, limit=limit)
@@ -803,6 +958,11 @@ class MemoryStore:
         entries = [entry.model_dump(mode="json") for entry in self.history(limit=1000)]
         history_path.write_text(json.dumps(entries, indent=2), encoding="utf-8")
 
+    def export_audit(self) -> None:
+        audit_path = self.codex_dir / "AUDIT.json"
+        entries = [entry.model_dump(mode="json") for entry in self.audit_log(limit=1000)]
+        audit_path.write_text(json.dumps(entries, indent=2), encoding="utf-8")
+
     def import_markdown(self, markdown_path: Path | None = None) -> list[MemoryEntry]:
         path = markdown_path or (self.codex_dir / "MEMORY.md")
         if not path.exists():
@@ -875,9 +1035,9 @@ class MemoryStore:
         return MemoryEntry(
             id=row["id"],
             type=row["type"],
-            title=row["title"],
-            context=row["context"],
-            resolution=row["resolution"],
+            title=self._unprotect_text(row["title"]),
+            context=self._unprotect_text(row["context"]),
+            resolution=self._unprotect_text(row["resolution"]),
             confidence=row["confidence"],
             importance=row["importance"],
             pinned=bool(row["pinned"]),
@@ -900,7 +1060,18 @@ class MemoryStore:
             memory_id=row["memory_id"],
             version=row["version"],
             action=row["action"],
-            snapshot=MemoryEntry(**json.loads(row["snapshot"])),
+            snapshot=MemoryEntry(**json.loads(self._unprotect_text(row["snapshot"]))),
+            source=row["source"],
+            project=row["project"],
+            timestamp=row["timestamp"],
+        )
+
+    def _audit_from_row(self, row: sqlite3.Row) -> MemoryAuditEntry:
+        return MemoryAuditEntry(
+            id=row["id"],
+            memory_id=row["memory_id"],
+            action=row["action"],
+            title=self._unprotect_text(row["title"]),
             source=row["source"],
             project=row["project"],
             timestamp=row["timestamp"],
@@ -914,16 +1085,56 @@ class MemoryStore:
             token_budget=row["token_budget"],
             injected_count=row["injected_count"],
             candidate_count=row["candidate_count"],
-            entries=[InjectionTraceEntry(**entry) for entry in json.loads(row["entries"])],
+            entries=[InjectionTraceEntry(**entry) for entry in json.loads(self._unprotect_text(row["entries"]))],
             timestamp=row["timestamp"],
         )
+
+    def _protect_text(self, value: str) -> str:
+        if not self.encryption_key or not value:
+            return value
+        salt = os.urandom(16)
+        nonce = os.urandom(12)
+        plain = value.encode("utf-8")
+        cipher = AESGCM(self._derive_encryption_key(salt)).encrypt(nonce, plain, None)
+        return "enc:v2:" + ":".join(
+            [
+                base64.urlsafe_b64encode(salt).decode("ascii"),
+                base64.urlsafe_b64encode(nonce).decode("ascii"),
+                base64.urlsafe_b64encode(cipher).decode("ascii"),
+            ]
+        )
+
+    def _unprotect_text(self, value: str) -> str:
+        if not self.encryption_key or not isinstance(value, str) or not value.startswith("enc:v2:"):
+            return value
+        try:
+            _prefix, _version, salt_text, nonce_text, cipher_text = value.split(":", 4)
+            salt = base64.urlsafe_b64decode(salt_text.encode("ascii"))
+            nonce = base64.urlsafe_b64decode(nonce_text.encode("ascii"))
+            cipher = base64.urlsafe_b64decode(cipher_text.encode("ascii"))
+            plain = AESGCM(self._derive_encryption_key(salt)).decrypt(nonce, cipher, None)
+            return plain.decode("utf-8")
+        except (InvalidTag, ValueError, OSError, UnicodeDecodeError):
+            return "[DECRYPTION FAILED]"
+
+    def _derive_encryption_key(self, salt: bytes) -> bytes:
+        kdf = PBKDF2HMAC(
+            algorithm=hashes.SHA256(),
+            length=32,
+            salt=salt,
+            iterations=200_000,
+        )
+        return kdf.derive(self.encryption_key.encode("utf-8"))
 
     def _redact(self, entry: MemoryEntry) -> MemoryEntry:
         data = entry.model_dump()
         for field in ("title", "context", "resolution"):
             value = data[field]
-            for pattern in SECRET_PATTERNS:
-                value = pattern.sub("[REDACTED]", value)
+            try:
+                for pattern in SECRET_PATTERNS:
+                    value = pattern.sub("[REDACTED]", value)
+            except Exception:
+                value = "[REDACTED]"
             data[field] = value
         return MemoryEntry(**data)
 
@@ -936,7 +1147,7 @@ class MemoryStore:
             "file_paths": entry.file_paths,
             "project": entry.project,
         }
-        return json.dumps(normalized, sort_keys=True)
+        return hashlib.sha256(json.dumps(normalized, sort_keys=True).encode("utf-8")).hexdigest()
 
     def _conflict_key(self, value: str) -> str:
         return " ".join(normalized.strip(".,;!?()[]{}'\"`").lower() for normalized in value.split())
@@ -953,7 +1164,7 @@ class MemoryStore:
         return [
             row
             for row in rows
-            if self._conflict_key(row["title"]) == entry_key
+            if self._conflict_key(self._unprotect_text(row["title"])) == entry_key
             and self._scopes_overlap(json.loads(row["file_paths"]), entry.file_paths)
         ]
 
@@ -1064,10 +1275,34 @@ class MemoryStore:
                 entry.id,
                 version,
                 action,
-                json.dumps(entry.model_dump(mode="json"), sort_keys=True),
+                self._protect_text(json.dumps(entry.model_dump(mode="json"), sort_keys=True)),
                 entry.source,
                 entry.project,
                 changed_at,
+            ),
+        )
+
+    def _record_audit(
+        self,
+        conn: sqlite3.Connection,
+        entry: MemoryEntry,
+        action: str,
+    ) -> None:
+        conn.execute(
+            """
+            INSERT INTO memory_audit (
+                id, memory_id, action, title, source, project, timestamp
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                f"audit_{uuid4().hex[:12]}",
+                entry.id,
+                action,
+                self._protect_text(entry.title),
+                entry.source,
+                entry.project,
+                datetime.now(timezone.utc).isoformat(),
             ),
         )
 
@@ -1114,7 +1349,9 @@ class MemoryStore:
                     trace.token_budget,
                     trace.injected_count,
                     trace.candidate_count,
-                    json.dumps([entry.model_dump(mode="json") for entry in trace.entries], sort_keys=True),
+                    self._protect_text(
+                        json.dumps([entry.model_dump(mode="json") for entry in trace.entries], sort_keys=True)
+                    ),
                     trace.timestamp,
                 ),
             )

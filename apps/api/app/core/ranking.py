@@ -52,6 +52,7 @@ class RankedMemory:
     score: float
     matched: bool
     reason: str
+    components: dict[str, float]
 
 
 def normalize_query(query: str) -> list[str]:
@@ -80,16 +81,17 @@ def rank_memory(entry: MemoryEntry, query: str, now: datetime | None = None) -> 
     if not terms:
         matched = True
 
-    score = (
-        keyword_score * 4.0
-        + exact_score * 2.5
-        + confidence_score * 1.2
-        + importance_score * 1.0
-        + usage_score * 0.7
-        + recency_score * 0.8
-        + type_score * 0.4
-        + tag_score * 0.5
-    )
+    components = {
+        "keyword": round(keyword_score * 4.0, 6),
+        "exact": round(exact_score * 2.5, 6),
+        "confidence": round(confidence_score * 1.2, 6),
+        "importance": round(importance_score * 1.0, 6),
+        "usage": round(usage_score * 0.7, 6),
+        "recency": round(recency_score * 0.8, 6),
+        "type": round(type_score * 0.4, 6),
+        "tag": round(tag_score * 0.5, 6),
+    }
+    score = sum(components.values())
     return RankedMemory(
         score=round(score, 6),
         matched=matched or exact_score > 0,
@@ -104,6 +106,7 @@ def rank_memory(entry: MemoryEntry, query: str, now: datetime | None = None) -> 
             terms=terms,
             pinned=entry.pinned,
         ),
+        components=components,
     )
 
 

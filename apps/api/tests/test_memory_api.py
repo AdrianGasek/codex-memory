@@ -1,10 +1,13 @@
 import json
+import sqlite3
 
+import pytest
 from fastapi.testclient import TestClient
 
 from app.main import app
-from app.core.models import MemoryCreate
+from app.core.models import MemoryCreate, MemoryUpdate
 from app.routes import memory
+from app.storage import sqlite as sqlite_storage
 from app.storage.sqlite import MemoryStore
 from app.storage.vector import ChromaVectorStore, PgVectorStore, create_vector_store
 
@@ -71,6 +74,28 @@ def test_memory_lifecycle(tmp_path, monkeypatch):
     assert [item["action"] for item in history.json()] == ["delete", "create"]
 
 
+def test_memory_reuse_across_store_instances_without_copy_paste(tmp_path):
+    db_path = tmp_path / "db" / "codex-mem.sqlite3"
+    codex_dir = tmp_path / ".codex"
+    first_session = MemoryStore(db_path=db_path, codex_dir=codex_dir, default_project="tests")
+    decision = first_session.store(
+        MemoryCreate(
+            type="decision",
+            title="Use SQLite for durable memory",
+            context="Session one chose SQLite persistence.",
+            resolution="Future sessions should retrieve this instead of restating it manually.",
+            source="test",
+        )
+    )
+
+    second_session = MemoryStore(db_path=db_path, codex_dir=codex_dir, default_project="tests")
+    context, results, trace = second_session.inject_context(query="durable memory persistence", limit=3, token_budget=500)
+
+    assert results[0].entry.id == decision.id
+    assert "Use SQLite for durable memory" in context
+    assert trace.entries[0].memory_id == decision.id
+
+
 def test_memory_history_records_create_and_delete(tmp_path):
     store = MemoryStore(
         db_path=tmp_path / "db" / "codex-mem.sqlite3",
@@ -104,6 +129,229 @@ def test_memory_history_records_create_and_delete(tmp_path):
 
     exported = (tmp_path / ".codex" / "HISTORY.json").read_text(encoding="utf-8")
     assert "Audit memory changes" in exported
+
+
+def test_secret_redaction_covers_common_token_formats(tmp_path):
+    store = MemoryStore(
+        db_path=tmp_path / "db" / "codex-mem.sqlite3",
+        codex_dir=tmp_path / ".codex",
+        default_project="tests",
+    )
+    entry = store.store(
+        MemoryCreate(
+            type="bug",
+            title="Leaked credentials were found",
+            context=(
+                "AWS key AKIAABCDEFGHIJKLMNOP and GitHub token "
+                "ghp_abcdefghijklmnopqrstuvwxyzABCDE plus bearer "
+                "Bearer abcdefghijklmnopqrstuvwxyz1234567890 should be hidden."
+            ),
+            resolution=(
+                "Private key -----BEGIN PRIVATE KEY-----\n"
+                "abcdefghijklmnopqrstuvwxyz\n"
+                "-----END PRIVATE KEY----- was removed."
+            ),
+            source="test",
+        )
+    )
+
+    combined = f"{entry.title} {entry.context} {entry.resolution}"
+    assert "AKIAABCDEFGHIJKLMNOP" not in combined
+    assert "ghp_abcdefghijklmnopqrstuvwxyzABCDE" not in combined
+    assert "Bearer abcdefghijklmnopqrstuvwxyz1234567890" not in combined
+    assert "BEGIN PRIVATE KEY" not in combined
+    assert combined.count("[REDACTED]") >= 4
+
+
+def test_raw_sqlite_storage_does_not_contain_secret_values(tmp_path):
+    store = MemoryStore(
+        db_path=tmp_path / "db" / "codex-mem.sqlite3",
+        codex_dir=tmp_path / ".codex",
+        default_project="tests",
+    )
+    store.store(
+        MemoryCreate(
+            type="bug",
+            title="Secret storage regression",
+            context="Never persist token=super-secret-token-value or sk-abcdefghijklmnopqrstuvwxyz123456.",
+            resolution="Redact before insert, export, and history recording.",
+            source="test",
+        )
+    )
+
+    raw_db = (tmp_path / "db" / "codex-mem.sqlite3").read_bytes()
+    exported = (tmp_path / ".codex" / "MEMORY.md").read_text(encoding="utf-8")
+    history = (tmp_path / ".codex" / "HISTORY.json").read_text(encoding="utf-8")
+    assert b"super-secret-token-value" not in raw_db
+    assert b"sk-abcdefghijklmnopqrstuvwxyz123456" not in raw_db
+    assert "super-secret-token-value" not in exported
+    assert "sk-abcdefghijklmnopqrstuvwxyz123456" not in history
+
+
+def test_redaction_failure_masks_fields_instead_of_storing_raw_text(tmp_path, monkeypatch):
+    class BrokenPattern:
+        def sub(self, _replacement, _value):
+            raise RuntimeError("redactor failed")
+
+    monkeypatch.setattr(sqlite_storage, "SECRET_PATTERNS", [BrokenPattern()])
+    store = MemoryStore(
+        db_path=tmp_path / "db" / "codex-mem.sqlite3",
+        codex_dir=tmp_path / ".codex",
+        default_project="tests",
+    )
+    entry = store.store(
+        MemoryCreate(
+            type="fact",
+            title="Sensitive title",
+            context="Sensitive context",
+            resolution="Sensitive resolution",
+            source="test",
+        )
+    )
+
+    raw_db = (tmp_path / "db" / "codex-mem.sqlite3").read_bytes()
+    assert entry.title == "[REDACTED]"
+    assert entry.context == "[REDACTED]"
+    assert entry.resolution == "[REDACTED]"
+    assert b"Sensitive context" not in raw_db
+
+
+def test_pii_redaction_masks_email_phone_and_ssn(tmp_path):
+    store = MemoryStore(
+        db_path=tmp_path / "db" / "codex-mem.sqlite3",
+        codex_dir=tmp_path / ".codex",
+        default_project="tests",
+    )
+    entry = store.store(
+        MemoryCreate(
+            type="fact",
+            title="User contact details should be removed",
+            context="Contact ada@example.com or +1 (202) 555-0199 before using SSN 123-45-6789.",
+            resolution="Keep only the non-sensitive implementation note.",
+            source="test",
+        )
+    )
+
+    assert "ada@example.com" not in entry.context
+    assert "+1 (202) 555-0199" not in entry.context
+    assert "123-45-6789" not in entry.context
+    assert entry.context.count("[REDACTED]") == 3
+
+
+def test_local_db_encryption_option_protects_text_fields(tmp_path):
+    store = MemoryStore(
+        db_path=tmp_path / "db" / "codex-mem.sqlite3",
+        codex_dir=tmp_path / ".codex",
+        default_project="tests",
+        encryption_key="test encryption key",
+    )
+    entry = store.store(
+        MemoryCreate(
+            type="decision",
+            title="Encrypt local memory",
+            context="Plaintext context should not be visible in SQLite.",
+            resolution="Decrypt when reading through MemoryStore.",
+            source="test",
+        )
+    )
+    updated = store.update(entry.id, MemoryUpdate(title="Encrypted edit"))
+    assert updated is not None
+    store.inject_context(query="Plaintext context", limit=1, token_budget=500)
+    store.delete(entry.id)
+
+    with sqlite3.connect(tmp_path / "db" / "codex-mem.sqlite3") as conn:
+        raw_history = conn.execute("SELECT snapshot FROM memory_history ORDER BY version LIMIT 1").fetchone()[0]
+        raw_audit = conn.execute("SELECT title FROM memory_audit ORDER BY timestamp LIMIT 1").fetchone()[0]
+        raw_trace = conn.execute("SELECT entries FROM injection_traces ORDER BY timestamp LIMIT 1").fetchone()[0]
+
+    raw_db = (tmp_path / "db" / "codex-mem.sqlite3").read_bytes()
+    assert b"Plaintext context should not be visible" not in raw_db
+    assert b"Encrypt local memory" not in raw_db
+    assert raw_history.startswith("enc:v2:")
+    assert raw_audit.startswith("enc:v2:")
+    assert raw_trace.startswith("enc:v2:")
+    assert store.history(memory_id=entry.id)[-1].snapshot.context == "Plaintext context should not be visible in SQLite."
+    assert store.audit_log(memory_id=entry.id)[0].title == "Encrypted edit"
+    assert store.latest_injection_trace() is not None
+    assert store.latest_injection_trace().entries[0].title == "Encrypted edit"
+
+
+def test_local_db_encryption_wrong_key_fails_authentication(tmp_path):
+    db_path = tmp_path / "db" / "codex-mem.sqlite3"
+    codex_dir = tmp_path / ".codex"
+    store = MemoryStore(
+        db_path=db_path,
+        codex_dir=codex_dir,
+        default_project="tests",
+        encryption_key="correct key",
+    )
+    entry = store.store(
+        MemoryCreate(
+            type="decision",
+            title="Authenticated encryption",
+            context="Wrong keys should not produce garbage plaintext.",
+            resolution="AES-GCM authentication rejects invalid keys.",
+            source="test",
+        )
+    )
+
+    wrong_key_store = MemoryStore(
+        db_path=db_path,
+        codex_dir=codex_dir,
+        default_project="tests",
+        encryption_key="wrong key",
+    )
+
+    loaded = wrong_key_store.get(entry.id)
+    assert loaded is not None
+    assert loaded.title == "[DECRYPTION FAILED]"
+    assert loaded.context == "[DECRYPTION FAILED]"
+    assert loaded.resolution == "[DECRYPTION FAILED]"
+
+
+def test_local_db_encryption_damaged_ciphertext_fails_safely(tmp_path):
+    store = MemoryStore(
+        db_path=tmp_path / "db" / "codex-mem.sqlite3",
+        codex_dir=tmp_path / ".codex",
+        default_project="tests",
+        encryption_key="correct key",
+    )
+    entry = store.store(
+        MemoryCreate(
+            type="decision",
+            title="Damaged ciphertext",
+            context="Malformed encrypted values should not leak partial plaintext.",
+            resolution="Return a clear decryption failure marker.",
+            source="test",
+        )
+    )
+
+    with sqlite3.connect(tmp_path / "db" / "codex-mem.sqlite3") as conn:
+        conn.execute("UPDATE memories SET context = ? WHERE id = ?", ("enc:v2:not-valid", entry.id))
+
+    loaded = store.get(entry.id)
+    assert loaded is not None
+    assert loaded.context == "[DECRYPTION FAILED]"
+
+
+def test_local_db_encryption_enabled_without_key_fails_startup(tmp_path, monkeypatch):
+    class FakeSettings:
+        db_path = tmp_path / "db" / "codex-mem.sqlite3"
+        codex_dir = tmp_path / ".codex"
+        default_project = "tests"
+        vector_backend = "local"
+        chroma_url = "http://127.0.0.1:8000"
+        pgvector_dsn = ""
+        db_encryption_enabled = True
+        db_encryption_key = ""
+
+    memory.get_store.cache_clear()
+    monkeypatch.setattr(memory, "get_settings", lambda: FakeSettings())
+
+    with pytest.raises(RuntimeError, match="CODEX_MEM_DB_ENCRYPTION_KEY"):
+        memory.get_store()
+
+    memory.get_store.cache_clear()
 
 
 def test_memory_update_endpoint_records_auditable_version(tmp_path, monkeypatch):
@@ -157,6 +405,39 @@ def test_memory_update_endpoint_records_auditable_version(tmp_path, monkeypatch)
 
     exported = json.loads((tmp_path / ".codex" / "INDEX.json").read_text(encoding="utf-8"))
     assert exported[0]["title"] == "Ranking uses hybrid scoring"
+
+
+def test_manual_update_and_delete_are_written_to_audit_log(tmp_path, monkeypatch):
+    store = MemoryStore(
+        db_path=tmp_path / "db" / "codex-mem.sqlite3",
+        codex_dir=tmp_path / ".codex",
+        default_project="tests",
+    )
+    monkeypatch.setattr(memory, "get_store", lambda: store)
+
+    client = TestClient(app)
+    created = client.post(
+        "/memory",
+        json={
+            "type": "fact",
+            "title": "Audit me",
+            "context": "This memory will be edited and deleted.",
+            "source": "manual",
+            "project": "tests",
+        },
+    )
+    memory_id = created.json()["id"]
+
+    assert client.patch(f"/memory/{memory_id}", json={"title": "Audited edit"}).status_code == 200
+    assert client.delete(f"/memory/{memory_id}").status_code == 200
+
+    audit = client.get("/memory/audit", params={"memory_id": memory_id})
+    assert audit.status_code == 200
+    events = audit.json()
+    assert [event["action"] for event in events] == ["delete", "update"]
+    assert events[0]["title"] == "Audited edit"
+    exported = json.loads((tmp_path / ".codex" / "AUDIT.json").read_text(encoding="utf-8"))
+    assert [event["memory_id"] for event in exported] == [memory_id, memory_id]
 
 
 def test_conflicting_memory_uses_latest_wins_policy(tmp_path):
@@ -830,6 +1111,134 @@ def test_markdown_import_back_into_sqlite(tmp_path):
     assert imported[0].tags == ["import", "markdown"]
 
 
+def test_markdown_migration_assistant_endpoint_imports_file(tmp_path, monkeypatch):
+    store = MemoryStore(
+        db_path=tmp_path / "db" / "codex-mem.sqlite3",
+        codex_dir=tmp_path / ".codex",
+        default_project="tests",
+    )
+    monkeypatch.setattr(memory, "get_store", lambda: store)
+    markdown = tmp_path / "legacy-memory.md"
+    markdown.write_text(
+        "\n".join(
+            [
+                "# MEMORY",
+                "",
+                "## Legacy fix",
+                "",
+                "- type: `solution`",
+                "- source: `legacy-md`",
+                "- project: `tests`",
+                "",
+                "### Context",
+                "",
+                "Markdown-only memory existed before SQLite.",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    client = TestClient(app)
+    response = client.post("/memory/import/markdown", json={"path": str(markdown)})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["path"] == str(markdown)
+    assert body["imported"][0]["title"] == "Legacy fix"
+    assert body["imported"][0]["source"] == "legacy-md"
+
+
+def test_markdown_import_endpoint_imports_default_codex_memory(tmp_path, monkeypatch):
+    store = MemoryStore(
+        db_path=tmp_path / "db" / "codex-mem.sqlite3",
+        codex_dir=tmp_path / ".codex",
+        default_project="tests",
+    )
+    monkeypatch.setattr(memory, "get_store", lambda: store)
+    (tmp_path / ".codex" / "MEMORY.md").write_text(
+        "\n".join(
+            [
+                "# MEMORY",
+                "",
+                "## Default import",
+                "",
+                "- type: `fact`",
+                "- source: `test`",
+                "",
+                "### Context",
+                "",
+                "Default .codex import works.",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    client = TestClient(app)
+    response = client.post("/memory/import/markdown", json={})
+
+    assert response.status_code == 200
+    assert response.json()["imported"][0]["title"] == "Default import"
+
+
+def test_markdown_import_endpoint_rejects_path_traversal(tmp_path, monkeypatch):
+    store = MemoryStore(
+        db_path=tmp_path / "repo" / "db" / "codex-mem.sqlite3",
+        codex_dir=tmp_path / "repo" / ".codex",
+        default_project="tests",
+    )
+    monkeypatch.setattr(memory, "get_store", lambda: store)
+    secret = tmp_path / "secret.md"
+    secret.write_text("# secret\n", encoding="utf-8")
+
+    client = TestClient(app)
+    response = client.post("/memory/import/markdown", json={"path": "../secret.md"})
+
+    assert response.status_code == 403
+    assert "outside the allowed repository boundary" in response.json()["detail"]
+
+
+def test_markdown_import_endpoint_rejects_absolute_path_outside_repo(tmp_path, monkeypatch):
+    store = MemoryStore(
+        db_path=tmp_path / "repo" / "db" / "codex-mem.sqlite3",
+        codex_dir=tmp_path / "repo" / ".codex",
+        default_project="tests",
+    )
+    monkeypatch.setattr(memory, "get_store", lambda: store)
+    outside = tmp_path / "outside.md"
+    outside.write_text("# outside\n", encoding="utf-8")
+
+    client = TestClient(app)
+    response = client.post("/memory/import/markdown", json={"path": str(outside)})
+
+    assert response.status_code == 403
+
+
+def test_markdown_import_endpoint_rejects_directories_large_files_and_non_markdown(tmp_path, monkeypatch):
+    store = MemoryStore(
+        db_path=tmp_path / "db" / "codex-mem.sqlite3",
+        codex_dir=tmp_path / ".codex",
+        default_project="tests",
+    )
+    monkeypatch.setattr(memory, "get_store", lambda: store)
+    large = tmp_path / "large.md"
+    large.write_text("x" * (memory.MARKDOWN_IMPORT_MAX_BYTES + 1), encoding="utf-8")
+    text = tmp_path / "notes.txt"
+    text.write_text("not markdown", encoding="utf-8")
+
+    client = TestClient(app)
+
+    directory_response = client.post("/memory/import/markdown", json={"path": "."})
+    large_response = client.post("/memory/import/markdown", json={"path": "large.md"})
+    text_response = client.post("/memory/import/markdown", json={"path": "notes.txt"})
+
+    assert directory_response.status_code == 400
+    assert "must be a file" in directory_response.json()["detail"]
+    assert large_response.status_code == 400
+    assert "byte limit" in large_response.json()["detail"]
+    assert text_response.status_code == 400
+    assert "only accepts .md" in text_response.json()["detail"]
+
+
 def test_markdown_export_import_round_trip(tmp_path):
     source = MemoryStore(
         db_path=tmp_path / "source" / "db.sqlite3",
@@ -870,6 +1279,7 @@ def test_repo_sync_exports_selected_entries(tmp_path, monkeypatch):
         default_project="tests",
     )
     monkeypatch.setattr(memory, "get_store", lambda: store)
+    monkeypatch.setattr(memory, "get_settings", lambda: type("Settings", (), {"sync_enabled": True})())
 
     selected = store.store(
         MemoryCreate(type="decision", title="Sync this", context="Selected.", tags=["repo-sync"], source="test")
@@ -883,6 +1293,22 @@ def test_repo_sync_exports_selected_entries(tmp_path, monkeypatch):
     assert [entry["id"] for entry in response.json()["synced"]] == [selected.id]
     exported = json.loads((tmp_path / ".codex" / "SYNCED_MEMORY.json").read_text(encoding="utf-8"))
     assert exported[0]["title"] == "Sync this"
+
+
+def test_repo_sync_requires_explicit_opt_in(tmp_path, monkeypatch):
+    store = MemoryStore(
+        db_path=tmp_path / "db" / "codex-mem.sqlite3",
+        codex_dir=tmp_path / ".codex",
+        default_project="tests",
+    )
+    monkeypatch.setattr(memory, "get_store", lambda: store)
+    monkeypatch.setattr(memory, "get_settings", lambda: type("Settings", (), {"sync_enabled": False})())
+
+    client = TestClient(app)
+    response = client.post("/memory/sync/repo")
+
+    assert response.status_code == 403
+    assert "opt in" in response.json()["detail"]
 
 
 def test_project_search_includes_global_scope(tmp_path):
@@ -903,6 +1329,94 @@ def test_project_search_includes_global_scope(tmp_path):
     assert {result.entry.id for result in results} == {global_entry.id, local_entry.id}
 
 
+def test_default_search_isolates_local_global_and_team_scopes(tmp_path):
+    store = MemoryStore(
+        db_path=tmp_path / "db" / "codex-mem.sqlite3",
+        codex_dir=tmp_path / ".codex",
+        default_project="tests",
+    )
+    global_entry = store.store(
+        MemoryCreate(type="fact", title="Shared scope memory", context="Global.", project="global", source="test")
+    )
+    local_entry = store.store(
+        MemoryCreate(type="fact", title="Shared scope memory", context="Local.", project="tests", source="test")
+    )
+    team_entry = store.store(
+        MemoryCreate(type="fact", title="Shared scope memory", context="Team.", project="team", source="test")
+    )
+
+    default_results = store.search(query="shared scope", track_usage=False)
+    team_results = store.search(query="shared scope", project="team", track_usage=False)
+
+    assert {result.entry.id for result in default_results} == {global_entry.id, local_entry.id}
+    assert {result.entry.id for result in team_results} == {global_entry.id, team_entry.id}
+
+
+def test_cross_project_learning_promotes_memory_to_global_scope(tmp_path, monkeypatch):
+    store = MemoryStore(
+        db_path=tmp_path / "db" / "codex-mem.sqlite3",
+        codex_dir=tmp_path / ".codex",
+        default_project="tests",
+    )
+    monkeypatch.setattr(memory, "get_store", lambda: store)
+    local = store.store(
+        MemoryCreate(type="solution", title="Reusable setup fix", context="Works across repos.", source="test")
+    )
+
+    client = TestClient(app)
+    response = client.post(f"/memory/{local.id}/promote-global")
+
+    assert response.status_code == 200
+    promoted = response.json()
+    assert promoted["project"] == "global"
+    assert promoted["source"] == "cross-project"
+    assert "cross-project" in promoted["tags"]
+    team_results = store.search(query="reusable setup", project="team", track_usage=False)
+    assert promoted["id"] in {result.entry.id for result in team_results}
+
+
+def test_team_memory_backend_searches_team_scope(tmp_path, monkeypatch):
+    store = MemoryStore(
+        db_path=tmp_path / "db" / "codex-mem.sqlite3",
+        codex_dir=tmp_path / ".codex",
+        default_project="tests",
+    )
+    monkeypatch.setattr(memory, "get_store", lambda: store)
+    monkeypatch.setattr(memory, "get_settings", lambda: type("Settings", (), {"team_backend": "local"})())
+    team_entry = store.store(
+        MemoryCreate(type="pattern", title="Team workflow", context="Shared team note.", project="team", source="test")
+    )
+    store.store(MemoryCreate(type="pattern", title="Local workflow", context="Local note.", source="test"))
+
+    client = TestClient(app)
+    response = client.get("/memory/team/search", params={"query": "workflow"})
+
+    assert response.status_code == 200
+    assert [result["entry"]["id"] for result in response.json()["results"]] == [team_entry.id]
+
+
+def test_shared_memory_namespace_search_isolated_by_namespace(tmp_path, monkeypatch):
+    store = MemoryStore(
+        db_path=tmp_path / "db" / "codex-mem.sqlite3",
+        codex_dir=tmp_path / ".codex",
+        default_project="tests",
+    )
+    monkeypatch.setattr(memory, "get_store", lambda: store)
+    alpha = store.store(
+        MemoryCreate(type="fact", title="Namespace rule", context="Alpha shared.", project="shared:alpha", source="test")
+    )
+    store.store(
+        MemoryCreate(type="fact", title="Namespace rule", context="Beta shared.", project="shared:beta", source="test")
+    )
+    store.store(MemoryCreate(type="fact", title="Namespace rule", context="Global.", project="global", source="test"))
+
+    client = TestClient(app)
+    response = client.get("/memory/shared/Alpha/search", params={"query": "namespace"})
+
+    assert response.status_code == 200
+    assert [result["entry"]["id"] for result in response.json()["results"]] == [alpha.id]
+
+
 def test_memory_metadata_exposes_schema_version(tmp_path, monkeypatch):
     store = MemoryStore(
         db_path=tmp_path / "db" / "codex-mem.sqlite3",
@@ -916,3 +1430,90 @@ def test_memory_metadata_exposes_schema_version(tmp_path, monkeypatch):
 
     assert response.status_code == 200
     assert response.json()["schema_version"] == "1"
+
+
+def test_config_diagnostics_endpoint(monkeypatch):
+    class FakeSettings:
+        def diagnostics(self):
+            return {
+                "config_path": ".codex/mem.config.json",
+                "diagnostics": ["Config key 'inject_limit' must be at least 1; using 5."],
+                "debug_verbose": False,
+                "inject_limit": 5,
+                "token_budget": 1200,
+                "vector_backend": "local",
+            }
+
+    monkeypatch.setattr(memory, "get_settings", lambda: FakeSettings())
+
+    client = TestClient(app)
+    response = client.get("/memory/config/diagnostics")
+
+    assert response.status_code == 200
+    assert response.json()["diagnostics"] == ["Config key 'inject_limit' must be at least 1; using 5."]
+
+
+def test_local_memory_viewer_is_served():
+    client = TestClient(app)
+    response = client.get("/memory/viewer")
+
+    assert response.status_code == 200
+    assert "text/html" in response.headers["content-type"]
+    assert "Codex-Mem Viewer" in response.text
+    assert "/memory/search" in response.text
+    assert "/memory/history" in response.text
+
+
+def test_health_diagnostics_reports_core_components(tmp_path, monkeypatch):
+    store = MemoryStore(
+        db_path=tmp_path / "db" / "codex-mem.sqlite3",
+        codex_dir=tmp_path / ".codex",
+        default_project="tests",
+    )
+    monkeypatch.setattr(memory, "get_store", lambda: store)
+
+    client = TestClient(app)
+    response = client.get("/memory/health/diagnostics")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "ok"
+    components = {component["name"]: component["status"] for component in body["components"]}
+    assert components["api"] == "ok"
+    assert components["db"] == "ok"
+    assert components["mcp"] == "ok"
+    assert components["hooks"] == "ok"
+    assert components["plugin"] == "ok"
+
+
+def test_search_ranking_debug_view_returns_score_components(tmp_path, monkeypatch):
+    store = MemoryStore(
+        db_path=tmp_path / "db" / "codex-mem.sqlite3",
+        codex_dir=tmp_path / ".codex",
+        default_project="tests",
+    )
+    monkeypatch.setattr(memory, "get_store", lambda: store)
+    entry = store.store(
+        MemoryCreate(
+            type="solution",
+            title="Debug ranking view",
+            context="Search debugging should explain ranking components.",
+            confidence=0.9,
+            importance=0.8,
+            tags=["ranking"],
+            source="test",
+        )
+    )
+
+    client = TestClient(app)
+    response = client.get("/memory/debug/search", params={"query": "ranking debug", "limit": 1})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["query"] == "ranking debug"
+    result = body["results"][0]
+    assert result["entry"]["id"] == entry.id
+    assert result["score"] > 0
+    assert result["components"]["keyword"] > 0
+    assert "semantic" in result["components"]
+    assert "matched query terms" in result["reason"]

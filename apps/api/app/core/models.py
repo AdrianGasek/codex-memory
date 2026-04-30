@@ -98,6 +98,16 @@ class MemoryHistoryEntry(BaseModel):
     timestamp: str
 
 
+class MemoryAuditEntry(BaseModel):
+    id: str
+    memory_id: str
+    action: Literal["delete", "update"]
+    title: str
+    source: str
+    project: str
+    timestamp: str
+
+
 def new_entry(payload: MemoryCreate, project: str) -> MemoryEntry:
     now = datetime.now(timezone.utc).isoformat()
     return MemoryEntry(
@@ -117,8 +127,30 @@ class SearchResult(BaseModel):
     reason: str = ""
 
 
+class MarkdownImportRequest(BaseModel):
+    path: str | None = None
+
+
+class MarkdownImportResponse(BaseModel):
+    imported: list[MemoryEntry]
+    path: str
+
+
 class SearchResponse(BaseModel):
     results: list[SearchResult]
+
+
+class SearchDebugResult(BaseModel):
+    entry: MemoryEntry
+    score: float
+    matched: bool
+    reason: str
+    components: dict[str, float]
+
+
+class SearchDebugResponse(BaseModel):
+    query: str
+    results: list[SearchDebugResult]
 
 
 class CompactMemoryResult(BaseModel):

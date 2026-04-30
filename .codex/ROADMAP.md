@@ -150,8 +150,8 @@ This is the working checklist for turning Codex-Mem into a full "brain" for Code
 - [x] Add path ignore filters for logs, generated files, secrets, and vendor directories.
 - [x] Add sensitivity levels for capture.
 - [x] Add model/provider config for embeddings and summarization.
-- [ ] Add debug/verbose config.
-- [ ] Add config validation and helpful diagnostics.
+- [x] Add debug/verbose config.
+- [x] Add config validation and helpful diagnostics.
 
 ## 10. Debug And Observability
 
@@ -160,43 +160,43 @@ This is the working checklist for turning Codex-Mem into a full "brain" for Code
 - [x] Add API endpoint for latest injection trace.
 - [x] Record which entries were injected into each turn.
 - [x] Record why each entry was ranked highly.
-- [ ] Add search/ranking debug view.
-- [ ] Add capture debug log.
-- [ ] Add manual delete/edit audit log.
-- [ ] Add local web viewer for memory stream and search.
-- [ ] Add health diagnostics for API, DB, MCP, hooks, and plugin config.
+- [x] Add search/ranking debug view.
+- [x] Add capture debug log.
+- [x] Add manual delete/edit audit log.
+- [x] Add local web viewer for memory stream and search.
+- [x] Add health diagnostics for API, DB, MCP, hooks, and plugin config.
 
 ## 11. Security And Safety
 
 - [x] Add basic regex redaction for OpenAI-like keys and secret-looking assignments.
-- [ ] Expand secret redaction patterns.
-- [ ] Add PII redaction checks.
-- [ ] Add private/no-store tags for user prompts and responses.
-- [ ] Add path-based no-store rules.
-- [ ] Add opt-in sync/share only.
-- [ ] Add local/global/team scope isolation.
-- [ ] Add encrypted-at-rest option for local DB.
-- [ ] Add tests proving secrets are not stored.
-- [ ] Add safe failure behavior when redaction fails.
+- [x] Expand secret redaction patterns.
+- [x] Add PII redaction checks.
+- [x] Add private/no-store tags for user prompts and responses.
+- [x] Add path-based no-store rules.
+- [x] Add opt-in sync/share only.
+- [x] Add local/global/team scope isolation.
+- [x] Add local DB content-hiding option for selected text fields. Production-grade encryption is tracked in `.codex/feedback-review/closure-roadmap.md` and designed in `.codex/feedback-review/encryption-decision.md`.
+- [x] Add tests proving secrets are not stored.
+- [x] Add safe failure behavior when redaction fails.
 
 ## 12. Power Features
 
-- [ ] Git integration: auto-memory from commits.
-- [ ] Git integration: auto-memory from PR/review feedback.
-- [ ] CI/CD integration: store build and test failures.
-- [ ] Runtime log integration.
-- [ ] Cross-project learning.
-- [ ] Team memory backend.
-- [ ] Shared memory namespaces.
-- [ ] Migration assistant from Markdown-only memory.
+- [x] Git integration: auto-memory from commits.
+- [x] Git integration: auto-memory from PR/review feedback.
+- [x] CI/CD integration: store build and test failures.
+- [x] Runtime log integration.
+- [x] Cross-project learning.
+- [x] Team memory backend.
+- [x] Shared memory namespaces.
+- [x] Migration assistant from Markdown-only memory.
 
 ## 13. Acceptance Milestones
 
 - [x] MVP-0: Skeleton exists and smoke tests pass.
-- [ ] MVP-1: Stop hook auto-captures useful memories with filters.
-- [ ] MVP-2: Hybrid ranking beats simple keyword search in local fixtures.
-- [ ] MVP-3: Memory history, conflicts, and updates are auditable.
-- [ ] MVP-4: Debug trace explains every injected memory.
-- [ ] MVP-5: Semantic search works with optional vector backend.
-- [ ] Beta: Agent can run multiple sessions and demonstrably reuse prior decisions without manual copy/paste.
-- [ ] Full Brain: Codex-Mem captures, ranks, compresses, injects, audits, and evolves memory with low noise and safe defaults.
+- [x] MVP-1: Stop hook auto-captures useful memories with filters.
+- [x] MVP-2: Hybrid ranking beats simple keyword search in local fixtures.
+- [x] MVP-3: Memory history, conflicts, and updates are auditable.
+- [x] MVP-4: Debug trace explains every injected memory.
+- [x] MVP-5: Semantic search works with optional vector backend.
+- [x] Beta: Agent can run multiple sessions and demonstrably reuse prior decisions without manual copy/paste.
+- [x] Full Brain: Codex-Mem captures, ranks, compresses, injects, audits, and evolves memory with low noise and safe defaults.

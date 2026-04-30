@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import fnmatch
 import json
 import os
 from pathlib import Path
@@ -8,15 +9,13 @@ import subprocess
 import sys
 import urllib.parse
 import urllib.request
+from datetime import datetime, timezone
 
 
 API_URL = os.getenv("CODEX_MEM_API_URL", "http://127.0.0.1:8000").rstrip("/")
 LIMIT = os.getenv("CODEX_MEM_INJECT_LIMIT", "5")
 TOKEN_BUDGET = os.getenv("CODEX_MEM_TOKEN_BUDGET", "1200")
 SUPPORTED_MODES = {"active", "approval", "debug", "passive"}
-CAPTURE_MODE = os.getenv("CODEX_MEM_MODE", os.getenv("CODEX_MEM_CAPTURE_MODE", "active")).strip().lower()
-if CAPTURE_MODE not in SUPPORTED_MODES:
-    CAPTURE_MODE = "active"
 APPROVAL_QUEUE = os.getenv("CODEX_MEM_APPROVAL_QUEUE", ".codex/PENDING_MEMORY.jsonl")
 HOOKS_ENABLED = os.getenv("CODEX_MEM_HOOKS_ENABLED", "true").strip().lower() not in {"0", "false", "no", "off"}
 DISABLED_HOOKS = {
@@ -40,6 +39,48 @@ def project_config() -> dict:
     except (OSError, json.JSONDecodeError):
         PROJECT_CONFIG = {}
     return PROJECT_CONFIG
+
+
+def configured_capture_mode() -> str:
+    capture_config = project_config().get("capture", {})
+    config_mode = capture_config.get("mode") if isinstance(capture_config, dict) else None
+    mode = os.getenv("CODEX_MEM_MODE", os.getenv("CODEX_MEM_CAPTURE_MODE", str(config_mode or "active"))).strip().lower()
+    if mode not in SUPPORTED_MODES:
+        return "active"
+    return mode
+
+
+def config_bool(env_name: str, fallback: bool) -> bool:
+    value = os.getenv(env_name)
+    if value is None:
+        return fallback
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def configured_debug_verbose() -> bool:
+    debug_config = project_config().get("debug", {})
+    fallback = bool(debug_config.get("verbose", False)) if isinstance(debug_config, dict) else False
+    return config_bool("CODEX_MEM_DEBUG_VERBOSE", fallback)
+
+
+def configured_capture_debug_log_enabled() -> bool:
+    debug_config = project_config().get("debug", {})
+    fallback = bool(debug_config.get("capture_log_enabled", False)) if isinstance(debug_config, dict) else False
+    return config_bool("CODEX_MEM_CAPTURE_DEBUG_LOG_ENABLED", fallback)
+
+
+def configured_capture_debug_log_path() -> str:
+    debug_config = project_config().get("debug", {})
+    fallback = ".codex/CAPTURE_DEBUG.jsonl"
+    if isinstance(debug_config, dict) and debug_config.get("capture_log"):
+        fallback = str(debug_config["capture_log"])
+    return os.getenv("CODEX_MEM_CAPTURE_DEBUG_LOG", fallback)
+
+
+CAPTURE_MODE = configured_capture_mode()
+DEBUG_VERBOSE = configured_debug_verbose()
+CAPTURE_DEBUG_LOG_ENABLED = configured_capture_debug_log_enabled()
+CAPTURE_DEBUG_LOG = configured_capture_debug_log_path()
 
 WORKED_PATTERNS = [
     re.compile(r"\b(what worked|worked|passed|succeeded|verified|tests? pass(?:ed)?)\b", re.I),
@@ -81,6 +122,7 @@ def main() -> None:
 
     if mode == "stop":
         captured = capture_from_stop(payload)
+        write_capture_debug_event("Stop", payload, captured)
         output = {"continue": True, "suppressOutput": CAPTURE_MODE not in {"debug", "passive"}}
         if CAPTURE_MODE == "passive" and captured:
             output["message"] = passive_capture_summary()
@@ -91,6 +133,7 @@ def main() -> None:
 
     if mode == "post-tool-use":
         captured = capture_from_tool_result(payload)
+        write_capture_debug_event("PostToolUse", payload, captured)
         output = {"continue": True, "suppressOutput": CAPTURE_MODE not in {"debug", "passive"}}
         if CAPTURE_MODE == "passive" and captured:
             output["message"] = passive_capture_summary()
@@ -100,6 +143,9 @@ def main() -> None:
         return
 
     query = payload.get("prompt") or payload.get("cwd") or "project memory"
+    if is_no_store_payload(payload) or has_no_store_directive(str(query)):
+        print(json.dumps(degraded_output("Codex-Mem skipped memory lookup for a private/no-store prompt.")))
+        return
     injection = fetch_injection(str(query))
     context = injection.get("additional_context", "")
     if not context:
@@ -137,6 +183,29 @@ def degraded_output(message: str, visible: bool = False) -> dict:
         "degraded": True,
         "message": message,
     }
+
+
+def write_capture_debug_event(hook_name: str, payload: dict, captured: int) -> bool:
+    if not (CAPTURE_DEBUG_LOG_ENABLED or CAPTURE_MODE == "debug"):
+        return False
+    log_path = Path(CAPTURE_DEBUG_LOG)
+    if not log_path.is_absolute():
+        log_path = Path.cwd() / log_path
+    event = {
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "hook": hook_name,
+        "mode": CAPTURE_MODE,
+        "captured": captured,
+        "cwd": payload.get("cwd") or os.getcwd(),
+        "source": payload.get("tool_name") or payload.get("tool") or "assistant",
+    }
+    try:
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        with log_path.open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps(event, sort_keys=True) + "\n")
+    except OSError:
+        return False
+    return True
 
 
 def hook_enabled(mode: str) -> bool:
@@ -197,6 +266,8 @@ def api_available() -> bool:
 
 def capture_from_stop(payload: dict) -> int:
     message = latest_assistant_message(payload)
+    if is_no_store_payload(payload) or has_no_store_directive(message):
+        return 0
     captured = capture_from_git_diff(payload)
     captured += capture_from_latest_commit(payload)
     if not message:
@@ -257,19 +328,81 @@ def capture_from_latest_commit(payload: dict) -> int:
         return 0
     commit_hash, subject = lines[0], lines[1]
     body = " ".join(lines[2:])
+    file_paths = latest_commit_file_paths(cwd)
     memory = {
         "type": "fact",
         "title": f"Commit {commit_hash}: {subject}"[:120],
         "context": (body or subject)[:1200],
         "resolution": "Captured automatically from the latest git commit.",
         "confidence": 0.7,
+        "file_paths": file_paths,
         "tags": ["auto-capture", "git-commit"],
         "source": "git-commit",
     }
     return 1 if post_memory(memory) else 0
 
 
+def latest_commit_file_paths(cwd: str) -> list[str]:
+    try:
+        changed = subprocess.run(
+            ["git", "show", "--name-only", "--pretty=format:", "HEAD"],
+            cwd=str(cwd),
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=3,
+        )
+    except Exception:
+        return []
+    if changed.returncode != 0:
+        return []
+    return [normalize_path(line) for line in changed.stdout.splitlines() if line.strip()]
+
+
 def capture_from_tool_result(payload: dict) -> int:
+    if is_no_store_payload(payload):
+        return 0
+    review_feedback = pr_review_feedback_text(payload)
+    if review_feedback:
+        memory = {
+            "type": "fact",
+            "title": title_from_text(review_feedback),
+            "context": review_feedback[:1200],
+            "resolution": "Captured automatically from PR or review feedback in tool output.",
+            "confidence": 0.7,
+            "tags": ["auto-capture", "git-pr-review", "review-feedback"],
+            "source": "git-pr-review",
+        }
+        return 1 if post_memory(memory) else 0
+
+    ci_failure = ci_failure_text(payload)
+    if ci_failure:
+        memory = {
+            "type": "bug",
+            "title": title_from_text(ci_failure),
+            "context": ci_failure[:1200],
+            "resolution": "Captured automatically from CI/CD, build, or test failure output.",
+            "confidence": 0.75,
+            "tags": ["auto-capture", "ci-cd", "build-failure", "failed"],
+            "source": "ci-cd",
+        }
+        return 1 if post_memory(memory) else 0
+
+    runtime_log = runtime_log_text(payload)
+    if runtime_log:
+        log_path = str(payload.get("log_path") or payload.get("runtime_log_path") or "").strip()
+        memory = {
+            "type": "bug",
+            "title": title_from_text(runtime_log),
+            "context": runtime_log[:1200],
+            "resolution": "Captured automatically from runtime log output.",
+            "confidence": 0.7,
+            "file_paths": [normalize_path(log_path)] if log_path else [],
+            "tags": ["auto-capture", "runtime-log", "failed"],
+            "source": "runtime-log",
+        }
+        return 1 if post_memory(memory) else 0
+
     failure = tool_failure_text(payload)
     if not failure:
         return 0
@@ -284,6 +417,58 @@ def capture_from_tool_result(payload: dict) -> int:
         "source": "post-tool-use",
     }
     return 1 if post_memory(memory) else 0
+
+
+def pr_review_feedback_text(payload: dict) -> str:
+    tool_name = str(payload.get("tool_name") or payload.get("tool") or "").lower()
+    text = extract_text(payload.get("output") or payload.get("stdout") or payload.get("result") or payload.get("message"))
+    if not text.strip():
+        return ""
+    lowered = text.lower()
+    tool_mentions_pr = any(marker in tool_name for marker in ("gh", "github", "pr", "pull"))
+    feedback_markers = ("pull request", "review", "requested changes", "review comment", "inline comment")
+    if not tool_mentions_pr and not any(marker in lowered for marker in feedback_markers):
+        return ""
+    if not any(marker in lowered for marker in feedback_markers):
+        return ""
+    return f"PR review feedback: {' '.join(text.split())}"
+
+
+def ci_failure_text(payload: dict) -> str:
+    tool_name = str(payload.get("tool_name") or payload.get("tool") or "").lower()
+    status = str(payload.get("status") or "").lower()
+    exit_code = payload.get("exit_code")
+    text = extract_text(payload.get("error") or payload.get("stderr") or payload.get("output") or payload.get("stdout"))
+    if not text.strip():
+        return ""
+    failed = bool(payload.get("error") or payload.get("stderr")) or status in {"error", "failed", "failure"} or (
+        isinstance(exit_code, int) and exit_code != 0
+    )
+    lowered = f"{tool_name} {text}".lower()
+    ci_markers = ("ci", "github actions", "workflow", "build", "pytest", "test failed", "tests failed", "npm test")
+    if failed and any(marker in lowered for marker in ci_markers):
+        return f"CI/CD failure: {' '.join(text.split())}"
+    return ""
+
+
+def runtime_log_text(payload: dict) -> str:
+    log_path = str(payload.get("log_path") or payload.get("runtime_log_path") or "").strip()
+    if log_path and is_no_store_path(log_path):
+        return ""
+    text = extract_text(payload.get("runtime_log") or payload.get("log") or "")
+    if not text and log_path:
+        path = Path(log_path)
+        try:
+            text = path.read_text(encoding="utf-8")[:4000]
+        except OSError:
+            return ""
+    if not text.strip():
+        return ""
+    lowered = text.lower()
+    markers = ("traceback", "exception", "fatal", "runtimeerror", "error:")
+    if not any(marker in lowered for marker in markers):
+        return ""
+    return f"Runtime log failure: {' '.join(text.split())}"
 
 
 def tool_failure_text(payload: dict) -> str:
@@ -536,10 +721,57 @@ def post_memory(memory: dict) -> bool:
 
 
 def should_skip_memory(memory: dict) -> bool:
-    capture_config = project_config().get("capture", {})
-    no_store_tags = {str(tag).lower() for tag in capture_config.get("no_store_tags", [])}
+    no_store_tags = configured_no_store_tags()
     memory_tags = {str(tag).lower() for tag in memory.get("tags", [])}
-    return bool(no_store_tags.intersection(memory_tags))
+    if no_store_tags.intersection(memory_tags):
+        return True
+    return any(is_no_store_path(path) for path in memory.get("file_paths", []) or [])
+
+
+def configured_no_store_tags() -> set[str]:
+    capture_config = project_config().get("capture", {})
+    configured = capture_config.get("no_store_tags", ["private", "no-store"])
+    return {str(tag).strip().lower() for tag in configured if str(tag).strip()}
+
+
+def payload_tags(payload: dict) -> set[str]:
+    raw_tags = payload.get("tags") or payload.get("memory_tags") or []
+    if isinstance(raw_tags, str):
+        raw_tags = re.split(r"[\s,]+", raw_tags)
+    metadata = payload.get("metadata")
+    if isinstance(metadata, dict):
+        raw_tags = list(raw_tags) + list(metadata.get("tags") or [])
+    return {str(tag).strip().lower() for tag in raw_tags if str(tag).strip()}
+
+
+def is_no_store_payload(payload: dict) -> bool:
+    return bool(payload_tags(payload).intersection(configured_no_store_tags()))
+
+
+def has_no_store_directive(text: str) -> bool:
+    if not text:
+        return False
+    tags = configured_no_store_tags()
+    lowered = text.lower()
+    return any(f"#{tag}" in lowered or f"[{tag}]" in lowered for tag in tags)
+
+
+def configured_no_store_paths() -> list[str]:
+    capture_config = project_config().get("capture", {})
+    configured = capture_config.get("no_store_paths", [])
+    return [normalize_path(str(path)) for path in configured if str(path).strip()]
+
+
+def is_no_store_path(path: str) -> bool:
+    normalized = normalize_path(path)
+    for pattern in configured_no_store_paths():
+        if fnmatch.fnmatch(normalized, pattern):
+            return True
+        if normalized == pattern or normalized.startswith(f"{pattern}/"):
+            return True
+        if f"/{pattern}/" in normalized:
+            return True
+    return False
 
 
 def git_ignore_pathspecs() -> list[str]:
@@ -572,7 +804,10 @@ def passive_capture_summary() -> str:
 
 
 def debug_capture_summary(hook_name: str, captured: int) -> str:
-    return f"Codex-Mem debug: mode={CAPTURE_MODE}, hook={hook_name}, captured={captured}."
+    summary = f"Codex-Mem debug: mode={CAPTURE_MODE}, hook={hook_name}, captured={captured}."
+    if not DEBUG_VERBOSE:
+        return summary
+    return f"{summary} api={API_URL}, limit={LIMIT}, token_budget={TOKEN_BUDGET}."
 
 
 def debug_injection_summary(injection: dict) -> str:
@@ -582,6 +817,8 @@ def debug_injection_summary(injection: dict) -> str:
         "Codex-Mem debug: injected memory entries:",
         f"- requested_limit={trace.get('requested_limit', 0)} candidate_count={trace.get('candidate_count', 0)} injected_count={trace.get('injected_count', len(entries))}",
     ]
+    if DEBUG_VERBOSE:
+        lines.append(f"- api={API_URL} limit={LIMIT} token_budget={TOKEN_BUDGET}")
     if not entries:
         lines.append("- no entries injected")
         return "\n".join(lines)

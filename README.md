@@ -67,7 +67,20 @@ Useful per-project hook settings:
 $env:CODEX_MEM_MODE = "active"          # active, passive, or debug
 $env:CODEX_MEM_HOOKS_ENABLED = "true"   # false disables all Codex-Mem hooks
 $env:CODEX_MEM_DISABLED_HOOKS = ""      # comma-separated: session-start,user-prompt,stop,post-tool-use
+$env:CODEX_MEM_DEBUG_VERBOSE = "false"  # true adds API, limit, and token budget details to debug hook output
+$env:CODEX_MEM_CAPTURE_DEBUG_LOG_ENABLED = "false"
+$env:CODEX_MEM_CAPTURE_DEBUG_LOG = ".codex/CAPTURE_DEBUG.jsonl"
+$env:CODEX_MEM_SYNC_ENABLED = "false"   # true opts in to repo sync/share operations
+$env:CODEX_MEM_SYNC_SCOPE = "local"
+$env:CODEX_MEM_DB_ENCRYPTION_ENABLED = "false"
+$env:CODEX_MEM_DB_ENCRYPTION_KEY = ""   # required when DB encryption is enabled
 ```
+
+### Local Database Encryption Status
+
+The current local DB protection option is legacy content hiding for selected SQLite text fields, not production-grade encryption at rest. The target production design is documented in `.codex/feedback-review/encryption-decision.md`: application-level field encryption with Python `cryptography`, an operator-supplied `CODEX_MEM_DB_ENCRYPTION_KEY`, authenticated failure for wrong keys or damaged ciphertext, and an explicit key-rotation migration.
+
+Until that implementation is complete, do not treat the SQLite file, Markdown exports, logs, or process environment as safe places for secrets.
 
 ## Agent Compatibility
 

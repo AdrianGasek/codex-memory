@@ -164,6 +164,88 @@ def test_post_tool_use_captures_failed_tool_result(monkeypatch):
     assert "npm.ps1 cannot be loaded" in posted[0]["context"]
 
 
+def test_post_tool_use_captures_pr_review_feedback(monkeypatch):
+    hook_memory = load_hook_module()
+    posted = []
+
+    def fake_post(memory):
+        posted.append(memory)
+        return True
+
+    monkeypatch.setattr(hook_memory, "post_memory", fake_post)
+    count = hook_memory.capture_from_tool_result(
+        {
+            "tool_name": "gh",
+            "stdout": "Pull request review: requested changes on apps/api/app/main.py. Add validation before merge.",
+        }
+    )
+
+    assert count == 1
+    assert posted[0]["source"] == "git-pr-review"
+    assert "review-feedback" in posted[0]["tags"]
+    assert "requested changes" in posted[0]["context"]
+
+
+def test_post_tool_use_captures_ci_build_and_test_failures(monkeypatch):
+    hook_memory = load_hook_module()
+    posted = []
+
+    def fake_post(memory):
+        posted.append(memory)
+        return True
+
+    monkeypatch.setattr(hook_memory, "post_memory", fake_post)
+    count = hook_memory.capture_from_tool_result(
+        {
+            "tool_name": "github-actions",
+            "status": "failed",
+            "stdout": "Build failed: pytest apps/api/tests reported 2 test failures.",
+        }
+    )
+
+    assert count == 1
+    assert posted[0]["source"] == "ci-cd"
+    assert "ci-cd" in posted[0]["tags"]
+    assert "pytest apps/api/tests" in posted[0]["context"]
+
+
+def test_post_tool_use_captures_runtime_log_errors(monkeypatch, tmp_path):
+    hook_memory = load_hook_module()
+    posted = []
+    log_path = tmp_path / "logs" / "app.log"
+    log_path.parent.mkdir()
+    log_path.write_text("ERROR: RuntimeError: database connection failed\n", encoding="utf-8")
+
+    def fake_post(memory):
+        posted.append(memory)
+        return True
+
+    monkeypatch.setattr(hook_memory, "post_memory", fake_post)
+    count = hook_memory.capture_from_tool_result({"log_path": str(log_path)})
+
+    assert count == 1
+    assert posted[0]["source"] == "runtime-log"
+    assert "runtime-log" in posted[0]["tags"]
+    assert "database connection failed" in posted[0]["context"]
+    assert posted[0]["file_paths"] == [hook_memory.normalize_path(str(log_path))]
+
+
+def test_runtime_log_capture_respects_no_store_paths(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    config_dir = tmp_path / ".codex"
+    config_dir.mkdir()
+    (config_dir / "mem.config.json").write_text(
+        json.dumps({"capture": {"no_store_paths": ["private"]}}),
+        encoding="utf-8",
+    )
+    hook_memory = load_hook_module()
+    log_path = tmp_path / "private" / "app.log"
+    log_path.parent.mkdir()
+    log_path.write_text("ERROR: RuntimeError: private failure\n", encoding="utf-8")
+
+    assert hook_memory.capture_from_tool_result({"log_path": str(log_path)}) == 0
+
+
 def test_stop_hook_captures_git_diff_stat(monkeypatch, tmp_path):
     hook_memory = load_hook_module()
     posted = []
@@ -190,7 +272,9 @@ def test_stop_hook_captures_latest_commit(monkeypatch, tmp_path):
     hook_memory = load_hook_module()
     posted = []
 
-    def fake_run(*args, **kwargs):
+    def fake_run(args, **kwargs):
+        if args[:2] == ["git", "show"]:
+            return SimpleNamespace(returncode=0, stdout="apps/api/app/storage/sqlite.py\nREADME.md\n")
         return SimpleNamespace(returncode=0, stdout="abc1234\nAdd memory audit trail\nHistory is now exported.")
 
     def fake_post(memory):
@@ -206,6 +290,7 @@ def test_stop_hook_captures_latest_commit(monkeypatch, tmp_path):
     assert posted[0]["source"] == "git-commit"
     assert "git-commit" in posted[0]["tags"]
     assert posted[0]["title"] == "Commit abc1234: Add memory audit trail"
+    assert posted[0]["file_paths"] == ["apps/api/app/storage/sqlite.py", "readme.md"]
 
 
 def test_auto_capture_normalizes_observations():
@@ -374,6 +459,90 @@ def test_mode_config_supports_debug_and_overrides_capture_mode(monkeypatch):
     assert hook_memory.debug_capture_summary("Stop", 2) == "Codex-Mem debug: mode=debug, hook=Stop, captured=2."
 
 
+def test_mode_can_be_loaded_from_project_config(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    config_dir = tmp_path / ".codex"
+    config_dir.mkdir()
+    (config_dir / "mem.config.json").write_text(
+        json.dumps({"capture": {"mode": "passive"}}),
+        encoding="utf-8",
+    )
+    hook_memory = load_hook_module()
+
+    assert hook_memory.CAPTURE_MODE == "passive"
+
+
+def test_debug_verbose_can_be_loaded_from_project_config(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    config_dir = tmp_path / ".codex"
+    config_dir.mkdir()
+    (config_dir / "mem.config.json").write_text(
+        json.dumps({"debug": {"verbose": True}}),
+        encoding="utf-8",
+    )
+    hook_memory = load_hook_module()
+
+    assert hook_memory.DEBUG_VERBOSE is True
+    assert hook_memory.debug_capture_summary("Stop", 2).endswith(
+        "api=http://127.0.0.1:8000, limit=5, token_budget=1200."
+    )
+
+
+def test_debug_verbose_env_overrides_project_config(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("CODEX_MEM_DEBUG_VERBOSE", "false")
+    config_dir = tmp_path / ".codex"
+    config_dir.mkdir()
+    (config_dir / "mem.config.json").write_text(
+        json.dumps({"debug": {"verbose": True}}),
+        encoding="utf-8",
+    )
+    hook_memory = load_hook_module()
+
+    assert hook_memory.DEBUG_VERBOSE is False
+
+
+def test_capture_debug_log_writes_jsonl_when_enabled(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    config_dir = tmp_path / ".codex"
+    config_dir.mkdir()
+    (config_dir / "mem.config.json").write_text(
+        json.dumps(
+            {
+                "debug": {
+                    "capture_log_enabled": True,
+                    "capture_log": ".codex/capture-debug.jsonl",
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    hook_memory = load_hook_module()
+
+    written = hook_memory.write_capture_debug_event(
+        "Stop",
+        {"cwd": str(tmp_path), "tool_name": "test-tool"},
+        captured=2,
+    )
+
+    log_path = tmp_path / ".codex" / "capture-debug.jsonl"
+    event = json.loads(log_path.read_text(encoding="utf-8").splitlines()[0])
+    assert written is True
+    assert event["hook"] == "Stop"
+    assert event["captured"] == 2
+    assert event["source"] == "test-tool"
+
+
+def test_capture_debug_log_is_enabled_in_debug_mode(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("CODEX_MEM_MODE", "debug")
+    monkeypatch.setenv("CODEX_MEM_CAPTURE_DEBUG_LOG", ".codex/debug-mode-capture.jsonl")
+    hook_memory = load_hook_module()
+
+    assert hook_memory.write_capture_debug_event("PostToolUse", {}, captured=1) is True
+    assert (tmp_path / ".codex" / "debug-mode-capture.jsonl").exists()
+
+
 def test_hook_enable_disable_settings(monkeypatch):
     monkeypatch.setenv("CODEX_MEM_DISABLED_HOOKS", "stop, userpromptsubmit")
     hook_memory = load_hook_module()
@@ -502,6 +671,75 @@ def test_project_no_store_tags_skip_capture(monkeypatch, tmp_path):
 
     assert hook_memory.should_skip_memory({"tags": ["auto-capture", "private"]}) is True
     assert hook_memory.should_skip_memory({"tags": ["auto-capture"]}) is False
+
+
+def test_project_no_store_paths_skip_capture(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    config_dir = tmp_path / ".codex"
+    config_dir.mkdir()
+    (config_dir / "mem.config.json").write_text(
+        json.dumps({"capture": {"no_store_paths": ["secrets", "*.pem", "private/*.md"]}}),
+        encoding="utf-8",
+    )
+    hook_memory = load_hook_module()
+
+    assert hook_memory.should_skip_memory({"file_paths": ["secrets/token.txt"]}) is True
+    assert hook_memory.should_skip_memory({"file_paths": ["keys/service.pem"]}) is True
+    assert hook_memory.should_skip_memory({"file_paths": ["private/notes.md"]}) is True
+    assert hook_memory.should_skip_memory({"file_paths": ["apps/api/app/main.py"]}) is False
+
+
+def test_private_payload_tags_skip_response_capture(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    config_dir = tmp_path / ".codex"
+    config_dir.mkdir()
+    (config_dir / "mem.config.json").write_text(
+        json.dumps({"capture": {"no_store_tags": ["private", "no-store"]}}),
+        encoding="utf-8",
+    )
+    hook_memory = load_hook_module()
+
+    def fail_post(_memory):
+        raise AssertionError("private payloads should not be stored")
+
+    monkeypatch.setattr(hook_memory, "post_memory", fail_post)
+    captured = hook_memory.capture_from_stop(
+        {
+            "tags": ["private"],
+            "last_assistant_message": (
+                "Implemented the private workflow capture path with tests. "
+                "This would normally be actionable enough to store."
+            ),
+        }
+    )
+
+    assert captured == 0
+
+
+def test_no_store_directive_skips_response_capture(monkeypatch):
+    hook_memory = load_hook_module()
+
+    def fail_post(_memory):
+        raise AssertionError("no-store responses should not be stored")
+
+    monkeypatch.setattr(hook_memory, "post_memory", fail_post)
+    captured = hook_memory.capture_from_stop(
+        {
+            "last_assistant_message": (
+                "[no-store] Implemented the private workflow capture path with tests. "
+                "This would normally be actionable enough to store."
+            ),
+        }
+    )
+
+    assert captured == 0
+
+
+def test_payload_tags_read_metadata_and_strings(monkeypatch):
+    hook_memory = load_hook_module()
+
+    assert hook_memory.is_no_store_payload({"metadata": {"tags": ["private"]}}) is True
+    assert hook_memory.is_no_store_payload({"tags": "no-store,other"}) is True
 
 
 def test_git_diff_capture_uses_configured_ignore_paths(monkeypatch, tmp_path):

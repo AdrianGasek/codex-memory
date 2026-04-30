@@ -35,6 +35,15 @@ export interface SearchResult {
   reason: string;
 }
 
+export interface ConfigDiagnostics {
+  config_path: string;
+  diagnostics: string[];
+  debug_verbose: boolean;
+  inject_limit: number;
+  token_budget: number;
+  vector_backend: string;
+}
+
 export class MemoryClient {
   private readonly apiUrl: string;
 
@@ -44,6 +53,10 @@ export class MemoryClient {
 
   async health(): Promise<{ status: string }> {
     return this.request("/health");
+  }
+
+  async configDiagnostics(): Promise<ConfigDiagnostics> {
+    return this.request("/memory/config/diagnostics");
   }
 
   async remember(payload: MemoryPayload): Promise<MemoryEntry> {
