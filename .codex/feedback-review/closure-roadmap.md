@@ -370,27 +370,27 @@ DoD:
 
 ### 9.2 Debug traces
 
-- [ ] Search debug pokazuje komponenty score i semantic score.
-- [ ] Injection trace pokazuje trimming/summarization reason.
-- [ ] Capture debug log pokazuje powód odrzucenia memory.
-- [ ] Debug CLI pokazuje config diagnostics.
+- [x] Search debug pokazuje komponenty score i semantic score.
+- [x] Injection trace pokazuje trimming/summarization reason.
+- [x] Capture debug log pokazuje powód odrzucenia memory.
+- [x] Debug CLI pokazuje config diagnostics.
 
 DoD:
 
-- [ ] Operator może wyjaśnić, dlaczego wpis został zapisany, odrzucony, wyszukany albo wstrzyknięty.
+- [x] Operator może wyjaśnić, dlaczego wpis został zapisany, odrzucony, wyszukany albo wstrzyknięty.
 
 ## 10. Test matrix
 
 ### 10.1 API tests
 
-- [ ] Memory lifecycle.
-- [ ] Ranking/debug search.
-- [ ] Injection and trace.
-- [ ] History/audit.
-- [ ] Import Markdown.
-- [ ] Scope isolation.
-- [ ] Security redaction.
-- [ ] Encryption.
+- [x] Memory lifecycle.
+- [x] Ranking/debug search.
+- [x] Injection and trace.
+- [x] History/audit.
+- [x] Import Markdown.
+- [x] Scope isolation.
+- [x] Security redaction.
+- [x] Encryption.
 - [ ] Team/shared.
 - [ ] Health diagnostics.
 

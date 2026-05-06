@@ -68,6 +68,7 @@ def test_memory_lifecycle(tmp_path, monkeypatch):
     assert injected["trace"]["injected_count"] == 1
     assert injected["trace"]["entries"][0]["memory_id"] == memory_id
     assert "matched" in injected["trace"]["entries"][0]["reason"]
+    assert "full context injected" in injected["trace"]["entries"][0]["reason"]
 
     latest_trace = client.get("/memory/debug/injection")
     assert latest_trace.status_code == 200
@@ -1411,6 +1412,7 @@ def test_injection_summarizes_memories_when_budget_is_tight(tmp_path):
     assert "# Summarized Memory" in additional_context
     assert "Use a compact summary" in additional_context
     assert trace.injected_count >= 1
+    assert any("summarized due to token budget" in entry.reason for entry in trace.entries)
     assert len(additional_context) <= 450
 
 

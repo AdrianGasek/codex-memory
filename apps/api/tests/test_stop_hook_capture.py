@@ -559,6 +559,23 @@ def test_capture_debug_log_writes_jsonl_when_enabled(monkeypatch, tmp_path):
     assert event["source"] == "test-tool"
 
 
+def test_capture_debug_log_records_rejection_reason(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("CODEX_MEM_CAPTURE_DEBUG_LOG_ENABLED", "true")
+    hook_memory = load_hook_module()
+
+    written = hook_memory.write_capture_debug_event(
+        "Stop",
+        {"last_assistant_message": "ok"},
+        captured=0,
+    )
+
+    log_path = tmp_path / ".codex" / "CAPTURE_DEBUG.jsonl"
+    event = json.loads(log_path.read_text(encoding="utf-8").splitlines()[0])
+    assert written is True
+    assert event["rejected_reason"] == "text shorter than capture minimum"
+
+
 def test_capture_debug_log_is_enabled_in_debug_mode(monkeypatch, tmp_path):
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("CODEX_MEM_MODE", "debug")

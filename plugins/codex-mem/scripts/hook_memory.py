@@ -214,6 +214,9 @@ def write_capture_debug_event(hook_name: str, payload: dict, captured: int) -> b
         "cwd": payload.get("cwd") or os.getcwd(),
         "source": payload.get("tool_name") or payload.get("tool") or "assistant",
     }
+    rejected_reason = capture_rejection_reason(hook_name, payload, captured)
+    if rejected_reason:
+        event["rejected_reason"] = rejected_reason
     try:
         log_path.parent.mkdir(parents=True, exist_ok=True)
         with log_path.open("a", encoding="utf-8") as handle:
@@ -221,6 +224,23 @@ def write_capture_debug_event(hook_name: str, payload: dict, captured: int) -> b
     except OSError:
         return False
     return True
+
+
+def capture_rejection_reason(hook_name: str, payload: dict, captured: int) -> str:
+    if captured:
+        return ""
+    if is_no_store_payload(payload):
+        return "payload tagged no-store/private"
+    message = latest_assistant_message(payload) if hook_name.lower() == "stop" else extract_text(payload)
+    if has_no_store_directive(message):
+        return "text contains no-store directive"
+    if not message.strip():
+        return "no capture text available"
+    if len(message.strip()) < capture_min_chars():
+        return "text shorter than capture minimum"
+    if not is_actionable_capture(message):
+        return "text did not pass actionable capture filters"
+    return "no memory candidates produced"
 
 
 def hook_enabled(mode: str) -> bool:

@@ -617,10 +617,18 @@ class MemoryStore:
                 if len("\n".join(lines)) + len(summary) > budget_chars:
                     break
                 lines.append(summary)
-                injected_results.append(result)
+                injected_results.append(
+                    SearchResult(
+                        entry=result.entry,
+                        score=result.score,
+                        reason=f"{result.reason}; summarized due to token budget",
+                    )
+                )
                 continue
             lines.append(candidate)
-            injected_results.append(result)
+            injected_results.append(
+                SearchResult(entry=result.entry, score=result.score, reason=f"{result.reason}; full context injected")
+            )
         self._record_usage(injected_results, retrieved_delta=0, injected_delta=1)
         trace = self._record_injection_trace(query, limit, token_budget, injected_results, len(results))
         return "\n".join(lines).strip(), results, trace
