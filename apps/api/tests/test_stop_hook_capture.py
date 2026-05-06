@@ -55,7 +55,8 @@ def test_stop_hook_filters_guesses_logs_and_obvious_file_churn():
     ) == []
 
 
-def test_stop_hook_reads_latest_assistant_message_from_transcript(tmp_path):
+def test_stop_hook_reads_latest_assistant_message_from_transcript(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
     hook_memory = load_hook_module()
     transcript = tmp_path / "session.jsonl"
     transcript.write_text(
@@ -83,6 +84,20 @@ def test_stop_hook_reads_latest_assistant_message_from_transcript(tmp_path):
     message = hook_memory.latest_assistant_message({"transcript_path": str(transcript)})
 
     assert message == "Fixed transcript fallback for Stop hook capture."
+
+
+def test_stop_hook_rejects_transcript_path_outside_repo(monkeypatch, tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    monkeypatch.chdir(repo)
+    hook_memory = load_hook_module()
+    outside = tmp_path / "session.jsonl"
+    outside.write_text(
+        json.dumps({"role": "assistant", "content": [{"type": "text", "text": "Outside transcript."}]}) + "\n",
+        encoding="utf-8",
+    )
+
+    assert hook_memory.latest_assistant_message({"transcript_path": str(outside)}) == ""
 
 
 def test_stop_hook_posts_extracted_memory(monkeypatch):
@@ -244,6 +259,17 @@ def test_runtime_log_capture_respects_no_store_paths(monkeypatch, tmp_path):
     log_path.write_text("ERROR: RuntimeError: private failure\n", encoding="utf-8")
 
     assert hook_memory.capture_from_tool_result({"log_path": str(log_path)}) == 0
+
+
+def test_runtime_log_capture_rejects_path_outside_repo(monkeypatch, tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    monkeypatch.chdir(repo)
+    hook_memory = load_hook_module()
+    outside = tmp_path / "outside.log"
+    outside.write_text("ERROR: RuntimeError: outside failure\n", encoding="utf-8")
+
+    assert hook_memory.runtime_log_text({"log_path": str(outside)}) == ""
 
 
 def test_stop_hook_captures_git_diff_stat(monkeypatch, tmp_path):
@@ -740,6 +766,23 @@ def test_payload_tags_read_metadata_and_strings(monkeypatch):
 
     assert hook_memory.is_no_store_payload({"metadata": {"tags": ["private"]}}) is True
     assert hook_memory.is_no_store_payload({"tags": "no-store,other"}) is True
+
+
+def test_no_store_prompt_skips_injection_lookup(monkeypatch, capsys):
+    hook_memory = load_hook_module()
+
+    def fail_fetch(_query):
+        raise AssertionError("no-store prompts should not fetch memory")
+
+    monkeypatch.setattr(hook_memory, "fetch_injection", fail_fetch)
+    monkeypatch.setattr(hook_memory, "read_stdin_json", lambda: {"prompt": "[no-store] private prompt"})
+    monkeypatch.setattr(hook_memory.sys, "argv", ["hook_memory.py", "user-prompt"])
+
+    hook_memory.main()
+
+    output = json.loads(capsys.readouterr().out)
+    assert output["continue"] is True
+    assert "skipped memory lookup" in output["message"]
 
 
 def test_git_diff_capture_uses_configured_ignore_paths(monkeypatch, tmp_path):

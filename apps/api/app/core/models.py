@@ -101,7 +101,7 @@ class MemoryHistoryEntry(BaseModel):
 class MemoryAuditEntry(BaseModel):
     id: str
     memory_id: str
-    action: Literal["delete", "update"]
+    action: Literal["create", "delete", "sync", "update"]
     title: str
     source: str
     project: str

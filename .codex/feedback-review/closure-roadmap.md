@@ -93,29 +93,29 @@ DoD:
 
 ### 2.2 Tryb importu spoza repo
 
-- [ ] Dodać config typu `migration.allow_external_paths`.
-- [ ] Domyślnie ustawić `false`.
-- [ ] Dodać diagnostykę configu dla tej opcji.
-- [ ] Wymagać jawnego opt-in dla importu z zewnętrznej ścieżki.
+- [x] Dodać config typu `migration.allow_external_paths`.
+- [x] Domyślnie ustawić `false`.
+- [x] Dodać diagnostykę configu dla tej opcji.
+- [x] Wymagać jawnego opt-in dla importu z zewnętrznej ścieżki.
 
 DoD:
 
-- [ ] Import spoza repo nie działa bez opt-in.
-- [ ] Import spoza repo działa z opt-in i jest testowany.
+- [x] Import spoza repo nie działa bez opt-in.
+- [x] Import spoza repo działa z opt-in i jest testowany.
 
 ### 2.3 Testy migracji
 
-- [ ] Test importu domyślnego `.codex/MEMORY.md`.
-- [ ] Test importu wskazanego pliku w repo.
-- [ ] Test zablokowania `../secret.md`.
-- [ ] Test zablokowania absolutnej ścieżki poza repo.
-- [ ] Test limitu rozmiaru.
-- [ ] Test niepoprawnego Markdown bez crasha.
+- [x] Test importu domyślnego `.codex/MEMORY.md`.
+- [x] Test importu wskazanego pliku w repo.
+- [x] Test zablokowania `../secret.md`.
+- [x] Test zablokowania absolutnej ścieżki poza repo.
+- [x] Test limitu rozmiaru.
+- [x] Test niepoprawnego Markdown bez crasha.
 
 DoD:
 
-- [ ] Testy obejmują sukces i odmowę.
-- [ ] Komunikaty błędów są pomocne.
+- [x] Testy obejmują sukces i odmowę.
+- [x] Komunikaty błędów są pomocne.
 
 ## 3. Prawdziwe backendy Chroma i pgvector
 
@@ -123,54 +123,54 @@ Problem z review: `ChromaVectorStore` i `PgVectorStore` są obecnie adapterami l
 
 ### 3.1 Kontrakt vector store
 
-- [ ] Rozszerzyć interfejs `VectorStore` o metody potrzebne dla backendów zewnętrznych.
-- [ ] Zdecydować, gdzie są przechowywane embeddingi: SQLite, Chroma, pgvector lub oba.
-- [ ] Dodać obsługę błędów backendu i fallback do local tylko jeśli jest jawnie skonfigurowany.
-- [ ] Udokumentować różnicę między `local`, `chroma`, `pgvector`.
+- [x] Rozszerzyć interfejs `VectorStore` o metody potrzebne dla backendów zewnętrznych.
+- [x] Zdecydować, gdzie są przechowywane embeddingi: SQLite, Chroma, pgvector lub oba.
+- [x] Dodać obsługę błędów backendu i fallback do local tylko jeśli jest jawnie skonfigurowany.
+- [x] Udokumentować różnicę między `local`, `chroma`, `pgvector`.
 
 DoD:
 
-- [ ] Backend `chroma` nie dziedziczy zachowania local bez realnego klienta.
-- [ ] Backend `pgvector` nie dziedziczy zachowania local bez realnego klienta.
-- [ ] Nieobsługiwany lub niedostępny backend daje jasny błąd diagnostyczny.
+- [x] Backend `chroma` nie dziedziczy zachowania local bez realnego klienta.
+- [x] Backend `pgvector` nie dziedziczy zachowania local bez realnego klienta.
+- [x] Nieobsługiwany lub niedostępny backend daje jasny błąd diagnostyczny.
 
 ### 3.2 Chroma
 
-- [ ] Dodać klienta Chroma.
-- [ ] Dodać konfigurację URL, kolekcji i timeoutów.
-- [ ] Dodać zapis embeddingu do Chroma przy store/update.
-- [ ] Dodać wyszukiwanie similarity przez Chroma.
-- [ ] Dodać obsługę niedostępnej usługi.
+- [x] Dodać klienta Chroma.
+- [x] Dodać konfigurację URL, kolekcji i timeoutów.
+- [x] Dodać zapis embeddingu do Chroma przy store/update.
+- [x] Dodać wyszukiwanie similarity przez Chroma.
+- [x] Dodać obsługę niedostępnej usługi.
 
 DoD:
 
-- [ ] Test kontraktowy z mockowanym klientem Chroma.
-- [ ] Test błędu połączenia.
-- [ ] Dokumentacja uruchomienia lokalnego Chroma.
+- [x] Test kontraktowy z mockowanym klientem Chroma.
+- [x] Test błędu połączenia.
+- [x] Dokumentacja uruchomienia lokalnego Chroma.
 
 ### 3.3 pgvector
 
-- [ ] Dodać klienta pgvector lub SQL przez Postgres.
-- [ ] Dodać migrację/schema dla tabeli wektorów.
-- [ ] Dodać zapis i update embeddingów.
-- [ ] Dodać wyszukiwanie similarity.
-- [ ] Dodać obsługę braku rozszerzenia pgvector.
+- [x] Dodać klienta pgvector lub SQL przez Postgres.
+- [x] Dodać migrację/schema dla tabeli wektorów.
+- [x] Dodać zapis i update embeddingów.
+- [x] Dodać wyszukiwanie similarity.
+- [x] Dodać obsługę braku rozszerzenia pgvector.
 
 DoD:
 
-- [ ] Test kontraktowy z mockowanym klientem pgvector.
-- [ ] Test błędu DSN.
-- [ ] Dokumentacja uruchomienia lokalnego Postgres + pgvector.
+- [x] Test kontraktowy z mockowanym klientem pgvector.
+- [x] Test błędu DSN.
+- [x] Dokumentacja uruchomienia lokalnego Postgres + pgvector.
 
 ### 3.4 Dokumentacja statusu backendów
 
-- [ ] Jeśli realne backendy nie są implementowane, zmienić roadmapę/README na „adapter placeholders”.
-- [ ] Jeśli są implementowane, dodać przykłady configu i komendy smoke.
+- [x] Jeśli realne backendy nie są implementowane, zmienić roadmapę/README na „adapter placeholders”. (Nie dotyczy: dodano klientów Chroma i pgvector.)
+- [x] Jeśli są implementowane, dodać przykłady configu i komendy smoke.
 
 DoD:
 
-- [ ] README nie obiecuje więcej niż działa.
-- [ ] Testy rozróżniają wybór backendu od realnej integracji.
+- [x] README nie obiecuje więcej niż działa.
+- [x] Testy rozróżniają wybór backendu od realnej integracji.
 
 ## 4. Team memory backend i uprawnienia
 
@@ -178,43 +178,43 @@ Problem z review: `team/search` to lokalny scope `team`, nie pełny backend zesp
 
 ### 4.1 Model team memory
 
-- [ ] Zdefiniować, czy team memory jest lokalnym namespace, zewnętrznym backendem, czy trybem synchronizacji.
-- [ ] Zdefiniować tenant/team id.
-- [ ] Zdefiniować role: reader, writer, admin.
-- [ ] Zdefiniować izolację między projektami i zespołami.
-- [ ] Zdefiniować audyt operacji team.
+- [x] Zdefiniować, czy team memory jest lokalnym namespace, zewnętrznym backendem, czy trybem synchronizacji.
+- [x] Zdefiniować tenant/team id.
+- [x] Zdefiniować role: reader, writer, admin.
+- [x] Zdefiniować izolację między projektami i zespołami.
+- [x] Zdefiniować audyt operacji team.
 
 DoD:
 
-- [ ] Dokumentacja jasno mówi, czym jest team backend.
-- [ ] Nazwy endpointów i configu nie sugerują nieistniejących gwarancji.
+- [x] Dokumentacja jasno mówi, czym jest team backend.
+- [x] Nazwy endpointów i configu nie sugerują nieistniejących gwarancji.
 
 ### 4.2 Implementacja izolacji
 
-- [ ] Dodać `team_id` lub równoważny namespace.
-- [ ] Dodać walidację dostępu do team scope.
-- [ ] Dodać wymóg opt-in dla zapisu do team memory.
-- [ ] Oddzielić local scope od team scope na poziomie zapytań i zapisu.
-- [ ] Dodać audit log dla operacji team.
+- [x] Dodać `team_id` lub równoważny namespace.
+- [x] Dodać walidację dostępu do team scope.
+- [x] Dodać wymóg opt-in dla zapisu do team memory.
+- [x] Oddzielić local scope od team scope na poziomie zapytań i zapisu.
+- [x] Dodać audit log dla operacji team.
 
 DoD:
 
-- [ ] Użytkownik/projekt bez dostępu nie widzi pamięci team.
-- [ ] Team search nie miesza wpisów innych teamów.
-- [ ] Global scope jest dołączany tylko zgodnie z regułami.
+- [x] Użytkownik/projekt bez dostępu nie widzi pamięci team.
+- [x] Team search nie miesza wpisów innych teamów.
+- [x] Global scope jest dołączany tylko zgodnie z regułami.
 
 ### 4.3 Testy team backendu
 
-- [ ] Test izolacji `team:a` vs `team:b`.
-- [ ] Test odmowy bez uprawnień.
-- [ ] Test zapisu z uprawnieniami.
-- [ ] Test auditu operacji team.
-- [ ] Test diagnostyki błędnej konfiguracji team backend.
+- [x] Test izolacji `team:a` vs `team:b`.
+- [x] Test odmowy bez uprawnień.
+- [x] Test zapisu z uprawnieniami.
+- [x] Test auditu operacji team.
+- [x] Test diagnostyki błędnej konfiguracji team backend.
 
 DoD:
 
-- [ ] Testy przechodzą w CI/smoke.
-- [ ] Dokumentacja zawiera przykłady configu.
+- [x] Testy przechodzą w CI/smoke.
+- [x] Dokumentacja zawiera przykłady configu.
 
 ## 5. Shared memory namespaces
 
@@ -222,27 +222,27 @@ Problem z review: shared namespaces działają jako projekt `shared:<name>`, ale
 
 ### 5.1 Kontrakt namespace
 
-- [ ] Zdefiniować dozwolony format nazwy namespace.
-- [ ] Dodać listowanie dostępnych namespace.
-- [ ] Dodać endpoint tworzenia/usuwania namespace albo udokumentować, że powstają przez zapis memory.
-- [ ] Dodać opis relacji `local`, `global`, `team`, `shared`.
+- [x] Zdefiniować dozwolony format nazwy namespace.
+- [x] Dodać listowanie dostępnych namespace.
+- [x] Dodać endpoint tworzenia/usuwania namespace albo udokumentować, że powstają przez zapis memory.
+- [x] Dodać opis relacji `local`, `global`, `team`, `shared`.
 
 DoD:
 
-- [ ] Namespace ma jednoznaczne reguły nazewnictwa.
-- [ ] Wyszukiwanie w namespace nie dołącza przypadkowo global, chyba że config tak mówi.
+- [x] Namespace ma jednoznaczne reguły nazewnictwa.
+- [x] Wyszukiwanie w namespace nie dołącza przypadkowo global, chyba że config tak mówi.
 
 ### 5.2 Testy namespace
 
-- [ ] Test normalizacji nazwy.
-- [ ] Test pustej lub niepoprawnej nazwy.
-- [ ] Test izolacji dwóch namespace.
-- [ ] Test tag filters w namespace.
-- [ ] Test progresywnego disclosure dla namespace.
+- [x] Test normalizacji nazwy.
+- [x] Test pustej lub niepoprawnej nazwy.
+- [x] Test izolacji dwóch namespace.
+- [x] Test tag filters w namespace.
+- [x] Test progresywnego disclosure dla namespace.
 
 DoD:
 
-- [ ] Shared namespace ma pełne testy API.
+- [x] Shared namespace ma pełne testy API.
 
 ## 6. Web viewer jako utrzymywalny moduł
 
@@ -250,39 +250,39 @@ Problem z review: viewer jest dużym stringiem w `routes/memory.py`.
 
 ### 6.1 Refactor struktury
 
-- [ ] Przenieść HTML do `apps/api/app/static/viewer.html` albo `apps/api/app/templates/viewer.html`.
-- [ ] Przenieść CSS do osobnego pliku albo jasno utrzymać inline tylko jako świadomy MVP.
-- [ ] Przenieść JS do osobnego pliku lub modułu.
-- [ ] Zostawić router jako cienką warstwę serwującą pliki.
+- [x] Przenieść HTML do `apps/api/app/static/viewer.html` albo `apps/api/app/templates/viewer.html`.
+- [x] Przenieść CSS do osobnego pliku albo jasno utrzymać inline tylko jako świadomy MVP.
+- [x] Przenieść JS do osobnego pliku lub modułu.
+- [x] Zostawić router jako cienką warstwę serwującą pliki.
 
 DoD:
 
-- [ ] `routes/memory.py` nie zawiera dużego bloku HTML.
-- [ ] Viewer nadal działa pod `/memory/viewer`.
+- [x] `routes/memory.py` nie zawiera dużego bloku HTML.
+- [x] Viewer nadal działa pod `/memory/viewer`.
 
 ### 6.2 Funkcjonalność viewera
 
-- [ ] Dodać search z filtrami type/project/tags.
-- [ ] Dodać debug ranking panel.
-- [ ] Dodać podgląd history/audit dla wybranego wpisu.
-- [ ] Dodać health diagnostics w viewerze.
-- [ ] Dodać czytelne stany loading/error/empty.
+- [x] Dodać search z filtrami type/project/tags.
+- [x] Dodać debug ranking panel.
+- [x] Dodać podgląd history/audit dla wybranego wpisu.
+- [x] Dodać health diagnostics w viewerze.
+- [x] Dodać czytelne stany loading/error/empty.
 
 DoD:
 
-- [ ] Viewer pozwala przejrzeć memory stream i search bez ręcznego używania API.
-- [ ] UI nie ujawnia sekretów ani no-store wpisów poza regułami API.
+- [x] Viewer pozwala przejrzeć memory stream i search bez ręcznego używania API.
+- [x] UI nie ujawnia sekretów ani no-store wpisów poza regułami API.
 
 ### 6.3 Testy viewera
 
-- [ ] Test serwowania HTML.
-- [ ] Test obecności referencji do assetów.
-- [ ] Test podstawowych endpointów używanych przez viewer.
-- [ ] Opcjonalnie test Playwright dla search flow.
+- [x] Test serwowania HTML.
+- [x] Test obecności referencji do assetów.
+- [x] Test podstawowych endpointów używanych przez viewer.
+- [x] Opcjonalnie test Playwright dla search flow. (Odłożone: pokryte testem endpointów i assetów viewera; pełny Playwright nie jest wymagany do DoD.)
 
 DoD:
 
-- [ ] Smoke albo osobny test potwierdza, że viewer nie jest pusty i potrafi pobrać dane.
+- [x] Smoke albo osobny test potwierdza, że viewer nie jest pusty i potrafi pobrać dane.
 
 ## 7. Dokumentacja i claim alignment
 
@@ -290,82 +290,82 @@ Problem z review: część checkboxów jest spełniona technicznie, ale nazwy mo
 
 ### 7.1 README
 
-- [ ] Dodać sekcję „Current guarantees”.
-- [ ] Dodać sekcję „Known limitations”.
-- [ ] Opisać realny status encryption, team backend, Chroma/pgvector, shared namespaces.
-- [ ] Dodać przykłady konfiguracji dla security/sync/team/vector.
+- [x] Dodać sekcję „Current guarantees”.
+- [x] Dodać sekcję „Known limitations”.
+- [x] Opisać realny status encryption, team backend, Chroma/pgvector, shared namespaces.
+- [x] Dodać przykłady konfiguracji dla security/sync/team/vector.
 
 DoD:
 
-- [ ] Nowy użytkownik rozumie, co jest produkcyjne, a co eksperymentalne.
+- [x] Nowy użytkownik rozumie, co jest produkcyjne, a co eksperymentalne.
 
 ### 7.2 Roadmapa główna
 
-- [ ] Jeśli coś zostaje placeholderem, zmienić opis checkboxa na precyzyjny.
-- [ ] Dodać nową sekcję „Production hardening”.
-- [ ] Przenieść otwarte elementy z tej roadmapy do `.codex/ROADMAP.md` albo linkować tę roadmapę jako źródło DoD.
+- [x] Jeśli coś zostaje placeholderem, zmienić opis checkboxa na precyzyjny.
+- [x] Dodać nową sekcję „Production hardening”.
+- [x] Przenieść otwarte elementy z tej roadmapy do `.codex/ROADMAP.md` albo linkować tę roadmapę jako źródło DoD.
 
 DoD:
 
-- [ ] `.codex/ROADMAP.md` nie wygląda jak pełna akceptacja funkcji, które są tylko lokalnym MVP.
+- [x] `.codex/ROADMAP.md` nie wygląda jak pełna akceptacja funkcji, które są tylko lokalnym MVP.
 
 ### 7.3 Compatibility notes
 
-- [ ] Opisać kompatybilność MCP stdio.
-- [ ] Opisać kompatybilność MCP HTTP.
-- [ ] Opisać wymagania dla Codex hooks.
-- [ ] Opisać tryby degraded/passive/approval/debug.
+- [x] Opisać kompatybilność MCP stdio.
+- [x] Opisać kompatybilność MCP HTTP.
+- [x] Opisać wymagania dla Codex hooks.
+- [x] Opisać tryby degraded/passive/approval/debug.
 
 DoD:
 
-- [ ] Dokumentacja zawiera scenariusze instalacji i diagnozy.
+- [x] Dokumentacja zawiera scenariusze instalacji i diagnozy.
 
 ## 8. Security hardening
 
 ### 8.1 Import i filesystem
 
-- [ ] Wszystkie endpointy i hooki czytające pliki mają path boundary.
-- [ ] Testy obejmują path traversal.
-- [ ] Testy obejmują symlink poza repo, jeśli system plików wspiera symlinki w CI.
+- [x] Wszystkie endpointy i hooki czytające pliki mają path boundary.
+- [x] Testy obejmują path traversal.
+- [x] Testy obejmują symlink poza repo, jeśli system plików wspiera symlinki w CI.
 
 DoD:
 
-- [ ] Brak dowolnego odczytu pliku przez API bez opt-in.
+- [x] Brak dowolnego odczytu pliku przez API bez opt-in.
 
 ### 8.2 No-store i redakcja
 
-- [ ] No-store działa dla promptów, odpowiedzi, tool payloadów i runtime logów.
-- [ ] Redakcja działa przed zapisem do SQLite, exportów, historii, auditu i traces.
-- [ ] Safe failure redaction jest pokryte testem dla każdego pola tekstowego.
-- [ ] Dodać testy na false positives dla PII, żeby redakcja nie niszczyła zbyt dużo danych technicznych.
+- [x] No-store działa dla promptów, odpowiedzi, tool payloadów i runtime logów.
+- [x] Redakcja działa przed zapisem do SQLite, exportów, historii, auditu i traces.
+- [x] Safe failure redaction jest pokryte testem dla każdego pola tekstowego.
+- [x] Dodać testy na false positives dla PII, żeby redakcja nie niszczyła zbyt dużo danych technicznych.
 
 DoD:
 
-- [ ] Sekrety i PII nie trafiają do surowej bazy ani exportów.
-- [ ] Redakcja ma akceptowalny poziom precyzji.
+- [x] Sekrety i PII nie trafiają do surowej bazy ani exportów.
+- [x] Redakcja ma akceptowalny poziom precyzji.
 
 ### 8.3 Sync/share
 
-- [ ] Wszystkie operacje sync/share wymagają opt-in.
-- [ ] Team/shared write wymaga osobnego opt-in.
-- [ ] Audit zapisuje kto/co/kiedy dla sync/share.
+- [x] Wszystkie operacje sync/share wymagają opt-in.
+- [x] Team/shared write wymaga osobnego opt-in.
+- [x] Audit zapisuje kto/co/kiedy dla sync/share.
 
 DoD:
 
-- [ ] Nie ma przypadkowej synchronizacji poza lokalny projekt.
+- [x] Nie ma przypadkowej synchronizacji poza lokalny projekt.
 
 ## 9. Observability i diagnostyka
 
 ### 9.1 Health diagnostics
 
-- [ ] Health diagnostics sprawdza realny status backendu vector, nie tylko plik configu.
-- [ ] Health diagnostics sprawdza team backend.
-- [ ] Health diagnostics sprawdza encryption config.
-- [ ] Health diagnostics sprawdza migracje/schema.
+- [x] Health diagnostics sprawdza realny status backendu vector, nie tylko plik configu.
+- [x] Health diagnostics sprawdza team backend.
+- [x] Health diagnostics sprawdza encryption config.
+- [x] Health diagnostics sprawdza migracje/schema.
 
 DoD:
 
-- [ ] Endpoint health pokazuje `ok`, `warning` lub `error` per komponent.
+- [x] Endpoint health pokazuje `ok`, `warning` lub `error` per komponent.
 - [ ] Nieudany komponent ma actionable message.
 
 ### 9.2 Debug traces

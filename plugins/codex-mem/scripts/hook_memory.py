@@ -81,6 +81,7 @@ CAPTURE_MODE = configured_capture_mode()
 DEBUG_VERBOSE = configured_debug_verbose()
 CAPTURE_DEBUG_LOG_ENABLED = configured_capture_debug_log_enabled()
 CAPTURE_DEBUG_LOG = configured_capture_debug_log_path()
+HOOK_ALLOW_EXTERNAL_PATHS = config_bool("CODEX_MEM_HOOK_ALLOW_EXTERNAL_PATHS", False)
 
 WORKED_PATTERNS = [
     re.compile(r"\b(what worked|worked|passed|succeeded|verified|tests? pass(?:ed)?)\b", re.I),
@@ -106,6 +107,20 @@ EXTENDED_LOW_VALUE_PATTERNS = [
     re.compile(r"\b(debug log|temporary log|console\.log|print debugging|scratch)\b", re.I),
     re.compile(r"\b(created file|edited file|ran command|opened file)\b", re.I),
 ]
+
+
+def resolve_hook_path(raw_path: str | Path) -> Path | None:
+    base = Path.cwd().resolve()
+    candidate = Path(raw_path)
+    if not candidate.is_absolute():
+        candidate = base / candidate
+    try:
+        resolved = candidate.resolve()
+    except OSError:
+        return None
+    if HOOK_ALLOW_EXTERNAL_PATHS or resolved == base or resolved.is_relative_to(base):
+        return resolved
+    return None
 
 
 def main() -> None:
@@ -457,7 +472,9 @@ def runtime_log_text(payload: dict) -> str:
         return ""
     text = extract_text(payload.get("runtime_log") or payload.get("log") or "")
     if not text and log_path:
-        path = Path(log_path)
+        path = resolve_hook_path(log_path)
+        if not path:
+            return ""
         try:
             text = path.read_text(encoding="utf-8")[:4000]
         except OSError:
@@ -491,7 +508,8 @@ def latest_assistant_message(payload: dict) -> str:
 
     transcript_path = payload.get("transcript_path")
     if isinstance(transcript_path, str) and transcript_path.strip():
-        return latest_assistant_message_from_transcript(Path(transcript_path))
+        path = resolve_hook_path(transcript_path)
+        return latest_assistant_message_from_transcript(path) if path else ""
 
     return ""
 

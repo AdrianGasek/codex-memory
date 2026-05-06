@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Query
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, Response
 
 from app.core.models import (
     AntiPatternResponse,
@@ -33,7 +33,7 @@ from app.core.models import (
 )
 from app.core.settings import get_settings
 from app.storage.sqlite import MemoryStore
-from app.storage.vector import create_vector_store
+from app.storage.vector import VectorBackendUnavailable, create_vector_store
 
 router = APIRouter(prefix="/memory", tags=["memory"])
 MARKDOWN_IMPORT_MAX_BYTES = 1_000_000
@@ -63,7 +63,10 @@ def get_store() -> MemoryStore:
         vector_store=create_vector_store(
             settings.vector_backend,
             chroma_url=settings.chroma_url,
+            chroma_collection=settings.chroma_collection,
+            chroma_timeout_seconds=settings.chroma_timeout_seconds,
             pgvector_dsn=settings.pgvector_dsn,
+            allow_local_fallback=settings.vector_allow_local_fallback,
         ),
         encryption_key=settings.db_encryption_key if settings.db_encryption_enabled else None,
     )
@@ -71,6 +74,8 @@ def get_store() -> MemoryStore:
 
 @router.post("", response_model=MemoryEntry)
 def store_memory(payload: MemoryCreate) -> MemoryEntry:
+    validate_team_write(payload.project)
+    validate_shared_write(payload.project)
     return get_store().store(payload)
 
 
@@ -98,6 +103,7 @@ def query_memory(
     tags: list[str] = Query(default=[]),
 ) -> SearchResponse:
     try:
+        validate_team_read_project(project)
         resolved_limit = limit or SEARCH_PROFILE_LIMITS[profile]
         results = get_store().search(
             query=query,
@@ -217,172 +223,20 @@ def config_diagnostics() -> dict:
 
 @router.get("/viewer", response_class=HTMLResponse)
 def local_memory_viewer() -> HTMLResponse:
-    return HTMLResponse(
-        """
-<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Codex-Mem Viewer</title>
-  <style>
-    :root {
-      color-scheme: light;
-      --bg: #f6f7f9;
-      --ink: #111827;
-      --muted: #667085;
-      --line: #d7dde5;
-      --accent: #0f766e;
-      --panel: #ffffff;
-    }
-    * { box-sizing: border-box; }
-    body {
-      margin: 0;
-      background: var(--bg);
-      color: var(--ink);
-      font: 14px/1.45 ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-    }
-    header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 20px;
-      padding: 18px 28px;
-      border-bottom: 1px solid var(--line);
-      background: rgba(255, 255, 255, 0.94);
-      position: sticky;
-      top: 0;
-      z-index: 2;
-    }
-    h1 { margin: 0; font-size: 18px; font-weight: 700; letter-spacing: 0; }
-    main {
-      display: grid;
-      grid-template-columns: minmax(0, 1fr) 360px;
-      min-height: calc(100svh - 62px);
-    }
-    section { padding: 24px 28px; }
-    aside {
-      border-left: 1px solid var(--line);
-      background: var(--panel);
-      padding: 24px;
-      overflow: auto;
-    }
-    form {
-      display: grid;
-      grid-template-columns: minmax(0, 1fr) 92px;
-      gap: 10px;
-      max-width: 760px;
-    }
-    input, button {
-      height: 38px;
-      border-radius: 6px;
-      border: 1px solid var(--line);
-      font: inherit;
-    }
-    input { padding: 0 12px; background: #fff; color: var(--ink); }
-    button { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 650; cursor: pointer; }
-    .meta { color: var(--muted); margin: 14px 0 18px; }
-    .list { display: grid; gap: 1px; border-top: 1px solid var(--line); max-width: 980px; }
-    .row {
-      background: var(--panel);
-      padding: 14px 0;
-      border-bottom: 1px solid var(--line);
-      display: grid;
-      grid-template-columns: 92px minmax(0, 1fr) 80px;
-      gap: 16px;
-      align-items: start;
-    }
-    .type { color: var(--accent); font-weight: 700; }
-    .title { font-weight: 700; margin-bottom: 4px; }
-    .text { color: var(--muted); overflow-wrap: anywhere; }
-    .score { color: var(--muted); text-align: right; font-variant-numeric: tabular-nums; }
-    h2 { margin: 0 0 14px; font-size: 13px; text-transform: uppercase; color: var(--muted); letter-spacing: 0.08em; }
-    .event { padding: 11px 0; border-bottom: 1px solid var(--line); }
-    .event strong { display: block; }
-    @media (max-width: 820px) {
-      main { grid-template-columns: 1fr; }
-      aside { border-left: 0; border-top: 1px solid var(--line); }
-      header, section, aside { padding-left: 16px; padding-right: 16px; }
-      .row { grid-template-columns: 1fr; gap: 4px; }
-      .score { text-align: left; }
-    }
-  </style>
-</head>
-<body>
-  <header>
-    <h1>Codex-Mem Viewer</h1>
-    <span id="status" class="meta">Loading</span>
-  </header>
-  <main>
-    <section>
-      <form id="search-form">
-        <input id="query" name="query" placeholder="Search memory" autocomplete="off">
-        <button type="submit">Search</button>
-      </form>
-      <p class="meta" id="result-count"></p>
-      <div class="list" id="results"></div>
-    </section>
-    <aside>
-      <h2>Memory Stream</h2>
-      <div id="stream"></div>
-    </aside>
-  </main>
-  <script>
-    const results = document.querySelector("#results");
-    const stream = document.querySelector("#stream");
-    const status = document.querySelector("#status");
-    const count = document.querySelector("#result-count");
+    viewer_path = Path(__file__).resolve().parents[1] / "static" / "viewer.html"
+    return HTMLResponse(viewer_path.read_text(encoding="utf-8"))
 
-    function escapeHtml(value) {
-      return String(value ?? "").replace(/[&<>"']/g, (char) => ({
-        "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;"
-      })[char]);
-    }
 
-    async function loadSearch(query = "") {
-      const params = new URLSearchParams({ query, limit: "20" });
-      const response = await fetch(`/memory/search?${params}`);
-      const body = await response.json();
-      count.textContent = `${body.results.length} results`;
-      results.innerHTML = body.results.map(({ entry, score, reason }) => `
-        <article class="row">
-          <div class="type">${escapeHtml(entry.type)}</div>
-          <div>
-            <div class="title">${escapeHtml(entry.title)}</div>
-            <div class="text">${escapeHtml(entry.context || entry.resolution || reason)}</div>
-          </div>
-          <div class="score">${Number(score).toFixed(2)}</div>
-        </article>
-      `).join("") || "<p class='meta'>No memory entries found.</p>";
-    }
-
-    async function loadStream() {
-      const response = await fetch("/memory/history?limit=20");
-      const body = await response.json();
-      stream.innerHTML = body.map((event) => `
-        <div class="event">
-          <strong>${escapeHtml(event.action)} &middot; ${escapeHtml(event.snapshot.title)}</strong>
-          <span class="text">${escapeHtml(event.timestamp)}</span>
-        </div>
-      `).join("") || "<p class='meta'>No history yet.</p>";
-    }
-
-    document.querySelector("#search-form").addEventListener("submit", (event) => {
-      event.preventDefault();
-      loadSearch(new FormData(event.currentTarget).get("query"));
-    });
-
-    Promise.all([loadSearch(), loadStream()])
-      .then(() => { status.textContent = "Ready"; })
-      .catch((error) => {
-        status.textContent = "Error";
-        results.innerHTML = `<p class="meta">${escapeHtml(error.message)}</p>`;
-      });
-  </script>
-</body>
-</html>
-        """.strip()
-    )
+@router.get("/viewer/assets/{asset_name}")
+def local_memory_viewer_asset(asset_name: str) -> Response:
+    allowed_assets = {"viewer.css": "text/css", "viewer.js": "application/javascript"}
+    media_type = allowed_assets.get(asset_name)
+    if not media_type:
+        raise HTTPException(status_code=404, detail="Viewer asset not found")
+    asset_path = Path(__file__).resolve().parents[1] / "static" / asset_name
+    if not asset_path.exists():
+        raise HTTPException(status_code=404, detail="Viewer asset not found")
+    return Response(asset_path.read_text(encoding="utf-8"), media_type=media_type)
 
 
 @router.get("/team/search", response_model=SearchResponse)
@@ -395,10 +249,12 @@ def query_team_memory(
     settings = get_settings()
     if settings.team_backend != "local":
         raise HTTPException(status_code=501, detail=f"Unsupported team memory backend: {settings.team_backend}")
+    require_team_role(settings.team_role, {"reader", "writer", "admin"})
     results = get_store().search(
         query=query,
         limit=limit or SEARCH_PROFILE_LIMITS[profile],
-        project="team",
+        project=team_namespace_project(settings.team_id),
+        include_global=False,
         tags=tags,
     )
     return SearchResponse(results=results)
@@ -423,12 +279,98 @@ def query_shared_namespace(
     return SearchResponse(results=results)
 
 
+@router.get("/shared/{namespace}/index", response_model=CompactIndexResponse)
+def compact_shared_namespace_index(
+    namespace: str,
+    query: str = "",
+    limit: int | None = Query(default=None, ge=1, le=50),
+    profile: RetrievalProfile = "short",
+    tags: list[str] = Query(default=[]),
+) -> CompactIndexResponse:
+    project = shared_namespace_project(namespace)
+    results = get_store().search(
+        query=query,
+        limit=limit or SEARCH_PROFILE_LIMITS[profile],
+        project=project,
+        include_global=False,
+        tags=tags,
+    )
+    return CompactIndexResponse(
+        results=[
+            CompactMemoryResult(
+                id=result.entry.id,
+                type=result.entry.type,
+                title=result.entry.title,
+                score=result.score,
+                reason=result.reason,
+                tags=result.entry.tags,
+                file_paths=result.entry.file_paths,
+            )
+            for result in results
+        ]
+    )
+
+
+@router.get("/shared/namespaces")
+def list_shared_namespaces() -> dict[str, list[str]]:
+    return {"namespaces": get_store().shared_namespaces()}
+
+
 def shared_namespace_project(namespace: str) -> str:
     normalized = namespace.strip().lower().replace("\\", "-").replace("/", "-")
     normalized = "".join(char if char.isalnum() or char in {"-", "_"} else "-" for char in normalized).strip("-_")
     if not normalized:
         raise HTTPException(status_code=400, detail="Shared namespace must contain letters or numbers.")
     return f"shared:{normalized}"
+
+
+def team_namespace_project(team_id: str) -> str:
+    normalized = team_id.strip().lower().replace("\\", "-").replace("/", "-")
+    normalized = "".join(char if char.isalnum() or char in {"-", "_"} else "-" for char in normalized).strip("-_")
+    if not normalized:
+        raise HTTPException(status_code=400, detail="Team id must contain letters or numbers.")
+    return f"team:{normalized}"
+
+
+def require_team_role(role: str, allowed: set[str]) -> None:
+    if role not in allowed:
+        raise HTTPException(status_code=403, detail=f"Team role '{role}' is not allowed for this operation.")
+
+
+def validate_team_write(project: str | None) -> None:
+    if not project or not project.startswith("team:"):
+        return
+    settings = get_settings()
+    if not settings.team_write_enabled:
+        raise HTTPException(
+            status_code=403,
+            detail="Team memory writes are disabled. Set team.write_enabled or CODEX_MEM_TEAM_WRITE_ENABLED=true.",
+        )
+    expected_project = team_namespace_project(settings.team_id)
+    if project != expected_project:
+        raise HTTPException(status_code=403, detail="Team memory write target does not match configured team id.")
+    require_team_role(settings.team_role, {"writer", "admin"})
+
+
+def validate_team_read_project(project: str | None) -> None:
+    if not project or not project.startswith("team:"):
+        return
+    settings = get_settings()
+    expected_project = team_namespace_project(settings.team_id)
+    if project != expected_project:
+        raise HTTPException(status_code=403, detail="Team memory read target does not match configured team id.")
+    require_team_role(settings.team_role, {"reader", "writer", "admin"})
+
+
+def validate_shared_write(project: str | None) -> None:
+    if not project or not project.startswith("shared:"):
+        return
+    settings = get_settings()
+    if not settings.shared_write_enabled:
+        raise HTTPException(
+            status_code=403,
+            detail="Shared memory writes are disabled. Set shared.write_enabled or CODEX_MEM_SHARED_WRITE_ENABLED=true.",
+        )
 
 
 @router.get("/health/diagnostics")
@@ -446,6 +388,10 @@ def health_diagnostics() -> dict:
             "status": "ok" if store.db_path.exists() and store.metadata().get("schema_version") else "warning",
             "detail": str(store.db_path),
         },
+        _schema_component(store),
+        _vector_component(settings, store),
+        _team_component(settings),
+        _encryption_component(settings),
         _json_file_component("mcp", settings.repo_root / "plugins" / "codex-mem" / ".mcp.json", "mcpServers"),
         _json_file_component("hooks", settings.repo_root / "plugins" / "codex-mem" / "hooks.json", "hooks"),
         _json_file_component(
@@ -456,6 +402,41 @@ def health_diagnostics() -> dict:
     ]
     overall = "ok" if all(component["status"] == "ok" for component in components) else "warning"
     return {"status": overall, "components": components, "config": settings.diagnostics()}
+
+
+def _schema_component(store: MemoryStore) -> dict:
+    version = store.metadata().get("schema_version")
+    if version:
+        return {"name": "schema", "status": "ok", "detail": f"schema_version={version}"}
+    return {"name": "schema", "status": "error", "detail": "Missing schema version metadata."}
+
+
+def _vector_component(settings, store: MemoryStore) -> dict:
+    if settings.vector_backend == "local":
+        return {"name": "vector", "status": "ok", "detail": "local vector backend active"}
+    try:
+        store.vector_store.search([0.0], limit=1, project=settings.default_project)
+    except VectorBackendUnavailable as error:
+        return {"name": "vector", "status": "error", "detail": str(error)}
+    except Exception as error:
+        return {"name": "vector", "status": "error", "detail": f"Vector backend check failed: {error}"}
+    return {"name": "vector", "status": "ok", "detail": f"{settings.vector_backend} backend reachable"}
+
+
+def _team_component(settings) -> dict:
+    if settings.team_backend != "local":
+        return {"name": "team", "status": "error", "detail": f"Unsupported team backend: {settings.team_backend}"}
+    if settings.team_role not in {"reader", "writer", "admin"}:
+        return {"name": "team", "status": "error", "detail": f"Invalid team role: {settings.team_role}"}
+    return {"name": "team", "status": "ok", "detail": f"local team namespace team:{settings.team_id}"}
+
+
+def _encryption_component(settings) -> dict:
+    if not settings.db_encryption_enabled:
+        return {"name": "encryption", "status": "warning", "detail": "DB field encryption is disabled."}
+    if not settings.db_encryption_key:
+        return {"name": "encryption", "status": "error", "detail": "DB encryption is enabled but key is missing."}
+    return {"name": "encryption", "status": "ok", "detail": "DB field encryption is enabled."}
 
 
 def _json_file_component(name: str, path, required_key: str) -> dict:
@@ -580,6 +561,7 @@ def sync_selected_to_repo() -> RepoSyncResponse:
 
 
 def _resolve_markdown_import_path(store: MemoryStore, raw_path: str | None) -> Path:
+    settings = get_settings()
     repo_root = store.codex_dir.parent.resolve()
     codex_dir = store.codex_dir.resolve()
     if raw_path:
@@ -592,7 +574,14 @@ def _resolve_markdown_import_path(store: MemoryStore, raw_path: str | None) -> P
     resolved = candidate.resolve()
     allowed_roots = [repo_root, codex_dir]
     if not any(resolved == root or resolved.is_relative_to(root) for root in allowed_roots):
-        raise HTTPException(status_code=403, detail="Markdown import path is outside the allowed repository boundary.")
+        if not settings.migration_allow_external_paths:
+            raise HTTPException(
+                status_code=403,
+                detail=(
+                    "Markdown import path is outside the allowed repository boundary. "
+                    "Set migration.allow_external_paths or CODEX_MEM_MIGRATION_ALLOW_EXTERNAL_PATHS=true to opt in."
+                ),
+            )
     if not resolved.exists():
         raise HTTPException(status_code=400, detail="Markdown import file does not exist.")
     if resolved.is_dir():
@@ -611,7 +600,10 @@ def _resolve_markdown_import_path(store: MemoryStore, raw_path: str | None) -> P
 def import_markdown_memory(payload: MarkdownImportRequest) -> MarkdownImportResponse:
     store = get_store()
     path = _resolve_markdown_import_path(store, payload.path)
-    imported = store.import_markdown(path)
+    try:
+        imported = store.import_markdown(path)
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=f"Invalid Markdown import: {error}") from error
     return MarkdownImportResponse(imported=imported, path=str(path))
 
 

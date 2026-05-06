@@ -61,7 +61,7 @@ This is the working checklist for turning Codex-Mem into a full "brain" for Code
 - [x] Add top-N retrieval profiles for short, normal, and deep modes.
 - [x] Add semantic embeddings search.
 - [x] Add vector store adapter behind a stable interface.
-- [x] Add optional pgvector/Chroma backend.
+- [x] Add optional Chroma/pgvector index backends with explicit clients, diagnostics, and documented local smoke paths.
 - [x] Add summarization when retrieved memory exceeds budget.
 - [x] Add progressive disclosure: compact index first, full details by ID.
 
@@ -175,7 +175,7 @@ This is the working checklist for turning Codex-Mem into a full "brain" for Code
 - [x] Add path-based no-store rules.
 - [x] Add opt-in sync/share only.
 - [x] Add local/global/team scope isolation.
-- [x] Add local DB content-hiding option for selected text fields. Production-grade encryption is tracked in `.codex/feedback-review/closure-roadmap.md` and designed in `.codex/feedback-review/encryption-decision.md`.
+- [x] Add opt-in local DB field encryption for selected text fields. Remaining production hardening and migration readiness are tracked in `.codex/feedback-review/closure-roadmap.md` and designed in `.codex/feedback-review/encryption-decision.md`.
 - [x] Add tests proving secrets are not stored.
 - [x] Add safe failure behavior when redaction fails.
 
@@ -186,8 +186,8 @@ This is the working checklist for turning Codex-Mem into a full "brain" for Code
 - [x] CI/CD integration: store build and test failures.
 - [x] Runtime log integration.
 - [x] Cross-project learning.
-- [x] Team memory backend.
-- [x] Shared memory namespaces.
+- [x] Team memory local namespace backend with `team:<id>` isolation, roles, opt-in writes, and tests.
+- [x] Shared memory namespaces as `shared:<name>` local project namespaces with listing, search/index endpoints, and isolation tests.
 - [x] Migration assistant from Markdown-only memory.
 
 ## 13. Acceptance Milestones
@@ -200,3 +200,9 @@ This is the working checklist for turning Codex-Mem into a full "brain" for Code
 - [x] MVP-5: Semantic search works with optional vector backend.
 - [x] Beta: Agent can run multiple sessions and demonstrably reuse prior decisions without manual copy/paste.
 - [x] Full Brain: Codex-Mem captures, ranks, compresses, injects, audits, and evolves memory with low noise and safe defaults.
+
+## 14. Production Hardening
+
+- [x] Track final production DoD in `.codex/feedback-review/closure-roadmap.md`.
+- [x] Align README and roadmap claims with actual encryption, vector, team, shared, and viewer behavior.
+- [x] Keep closure acceptance evidence in `.codex/feedback-review/final-acceptance.md` when all closure tasks pass.

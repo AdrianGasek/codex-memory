@@ -72,10 +72,14 @@ def test_roadmap_review_scopes_and_markdown_migration(tmp_path, monkeypatch):
         default_project="review",
     )
     monkeypatch.setattr(memory, "get_store", lambda: store)
-    monkeypatch.setattr(memory, "get_settings", lambda: type("Settings", (), {"team_backend": "local"})())
+    monkeypatch.setattr(
+        memory,
+        "get_settings",
+        lambda: type("Settings", (), {"team_backend": "local", "team_id": "default", "team_role": "reader"})(),
+    )
 
     team_entry = store.store(
-        MemoryCreate(type="fact", title="Review team note", context="Visible only in team scope.", project="team")
+        MemoryCreate(type="fact", title="Review team note", context="Visible only in team scope.", project="team:default")
     )
     shared_entry = store.store(
         MemoryCreate(

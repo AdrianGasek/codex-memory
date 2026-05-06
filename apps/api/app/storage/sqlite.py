@@ -33,7 +33,7 @@ from app.core.models import (
     new_entry,
 )
 from app.core.ranking import rank_memory
-from app.storage.vector import LocalVectorStore, VectorStore
+from app.storage.vector import LocalVectorStore, VectorRecord, VectorStore
 
 SECRET_PATTERNS = [
     re.compile(r"sk-[A-Za-z0-9_-]{20,}"),
@@ -46,7 +46,7 @@ SECRET_PATTERNS = [
     re.compile(r"(?i)(api[_-]?key|token|secret|password)\s*[:=]\s*['\"]?[^'\"\s]+"),
     re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b"),
     re.compile(r"\b\d{3}-\d{2}-\d{4}\b"),
-    re.compile(r"(?<!\d)(?:\+?\d[\d .()-]{7,}\d)(?!\d)"),
+    re.compile(r"(?<![\d.])(?:\+?\d[\d ()-]{7,}\d)(?![\d.])"),
 ]
 SCHEMA_VERSION = "1"
 
@@ -68,6 +68,8 @@ class MemoryStore:
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self.codex_dir.mkdir(parents=True, exist_ok=True)
         self._init_db()
+        if hasattr(self.vector_store, "ensure_schema"):
+            self.vector_store.ensure_schema()
         self.ensure_memory_files()
 
     def _connect(self) -> sqlite3.Connection:
@@ -289,7 +291,10 @@ class MemoryStore:
                     json.dumps(self._embedding_for_entry(entry)),
                 ),
             )
+            self.vector_store.upsert(self._vector_record_for_entry(entry))
             self._record_history(conn, entry, "create")
+            if entry.project and (entry.project.startswith("team:") or entry.project.startswith("shared:")):
+                self._record_audit(conn, entry, "create")
 
         self.export_markdown()
         self.export_history()
@@ -339,6 +344,7 @@ class MemoryStore:
         requested_tags = {tag.strip().lower() for tag in tags or [] if tag.strip()}
         requested_path = self._normalize_path(path or "")
         query_embedding = self.vector_store.embed(query) if query.strip() else []
+        backend_scores = self._backend_similarity_scores(query_embedding, limit=max(limit * 8, limit), project=project)
         results: list[SearchResult] = []
 
         with self._connect() as conn:
@@ -351,12 +357,19 @@ class MemoryStore:
             if requested_path and not self._path_matches(entry.file_paths, requested_path):
                 continue
             ranked = rank_memory(entry, query)
-            semantic_score = self._semantic_score(row, entry, query_embedding)
+            backend_semantic_score = backend_scores.get(entry.id)
+            semantic_score = (
+                backend_semantic_score
+                if backend_semantic_score is not None
+                else self._semantic_score(row, entry, query_embedding)
+            )
             if query.strip() and not ranked.matched and semantic_score < 0.25:
                 continue
             score = ranked.score + (semantic_score * 2.0)
             reason = ranked.reason
-            if semantic_score >= 0.25:
+            if backend_semantic_score is not None and semantic_score >= 0.25:
+                reason = f"{reason}; external vector backend similarity"
+            elif semantic_score >= 0.25:
                 reason = f"{reason}; semantic embedding similarity"
             results.append(SearchResult(entry=entry, score=round(score, 6), reason=reason))
 
@@ -453,6 +466,7 @@ class MemoryStore:
             cursor = conn.execute("DELETE FROM memories WHERE id = ?", (memory_id,))
             deleted = cursor.rowcount > 0
         if deleted:
+            self.vector_store.delete(memory_id)
             self.export_markdown()
             self.export_history()
             self.export_audit()
@@ -517,6 +531,7 @@ class MemoryStore:
                     updated.id,
                 ),
             )
+            self.vector_store.upsert(self._vector_record_for_entry(updated))
             self._record_history(conn, updated, "update")
             self._record_audit(conn, updated, "update")
 
@@ -994,15 +1009,25 @@ class MemoryStore:
                     context_lines.append(line)
                 if section == "resolution" and line.strip():
                     resolution_lines.append(line)
+            memory_type = metadata.get("type", "fact")
+            if memory_type not in {"fact", "decision", "bug", "solution", "pattern"}:
+                raise ValueError(f"entry '{title}' has unsupported type '{memory_type}'.")
+            try:
+                confidence = float(metadata.get("confidence") or 0.75)
+                importance = float(metadata.get("importance") or 0.5)
+            except ValueError as error:
+                raise ValueError(f"entry '{title}' has non-numeric confidence or importance.") from error
+            if not 0 <= confidence <= 1 or not 0 <= importance <= 1:
+                raise ValueError(f"entry '{title}' confidence and importance must be between 0 and 1.")
             imported.append(
                 self.store(
                     MemoryCreate(
-                        type=metadata.get("type", "fact"),
+                        type=memory_type,
                         title=title,
                         context="\n".join(context_lines).strip(),
                         resolution="\n".join(resolution_lines).strip(),
-                        confidence=float(metadata.get("confidence") or 0.75),
-                        importance=float(metadata.get("importance") or 0.5),
+                        confidence=confidence,
+                        importance=importance,
                         pinned=metadata.get("pinned", "False") == "True",
                         file_paths=[path.strip() for path in metadata.get("file_paths", "").split(",") if path.strip()],
                         tags=[tag.strip() for tag in metadata.get("tags", "").split(",") if tag.strip()],
@@ -1024,12 +1049,22 @@ class MemoryStore:
                 ('%"repo-sync"%',),
             ).fetchall()
         entries = [self._from_row(row) for row in rows]
+        with self._connect() as conn:
+            for entry in entries:
+                self._record_audit(conn, entry, "sync")
         path = self.codex_dir / "SYNCED_MEMORY.json"
         path.write_text(
             json.dumps([entry.model_dump(mode="json") for entry in entries], indent=2),
             encoding="utf-8",
         )
         return entries, path
+
+    def shared_namespaces(self) -> list[str]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT DISTINCT project FROM memories WHERE project LIKE 'shared:%' ORDER BY project"
+            ).fetchall()
+        return [row["project"].split(":", 1)[1] for row in rows if row["project"]]
 
     def _from_row(self, row: sqlite3.Row) -> MemoryEntry:
         return MemoryEntry(
@@ -1129,14 +1164,16 @@ class MemoryStore:
     def _redact(self, entry: MemoryEntry) -> MemoryEntry:
         data = entry.model_dump()
         for field in ("title", "context", "resolution"):
-            value = data[field]
-            try:
-                for pattern in SECRET_PATTERNS:
-                    value = pattern.sub("[REDACTED]", value)
-            except Exception:
-                value = "[REDACTED]"
-            data[field] = value
+            data[field] = self._redact_text(data[field])
         return MemoryEntry(**data)
+
+    def _redact_text(self, value: str) -> str:
+        try:
+            for pattern in SECRET_PATTERNS:
+                value = pattern.sub("[REDACTED]", value)
+        except Exception:
+            return "[REDACTED]"
+        return value
 
     def _hashable(self, entry: MemoryEntry) -> str:
         normalized = {
@@ -1191,6 +1228,28 @@ class MemoryStore:
                 ]
             )
         )
+
+    def _vector_record_for_entry(self, entry: MemoryEntry) -> VectorRecord:
+        return VectorRecord(
+            memory_id=entry.id,
+            embedding=self._embedding_for_entry(entry),
+            document="\n".join([entry.title, entry.context, entry.resolution]).strip(),
+            metadata={"project": entry.project or self.default_project, "type": entry.type.value},
+        )
+
+    def _backend_similarity_scores(
+        self,
+        query_embedding: list[float],
+        *,
+        limit: int,
+        project: str | None,
+    ) -> dict[str, float]:
+        if not query_embedding:
+            return {}
+        return {
+            result.memory_id: result.score
+            for result in self.vector_store.search(query_embedding, limit=limit, project=project)
+        }
 
     def _semantic_score(
         self,
@@ -1316,7 +1375,7 @@ class MemoryStore:
     ) -> InjectionTrace:
         trace = InjectionTrace(
             id=f"trace_{uuid4().hex[:12]}",
-            query=query,
+            query=self._redact_text(query),
             requested_limit=requested_limit,
             token_budget=token_budget,
             injected_count=len(injected_results),
@@ -1327,7 +1386,7 @@ class MemoryStore:
                     title=result.entry.title,
                     type=result.entry.type,
                     score=result.score,
-                    reason=result.reason,
+                    reason=self._redact_text(result.reason),
                 )
                 for result in injected_results
             ],

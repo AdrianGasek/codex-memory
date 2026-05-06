@@ -3,6 +3,11 @@
   "inject_limit": 5,
   "token_budget": 1200,
   "vector_backend": "local",
+  "vector": {
+    "allow_local_fallback": false,
+    "chroma_collection": "codex_mem",
+    "chroma_timeout_seconds": 5
+  },
   "embeddings": {
     "provider": "local",
     "model": "local-hash"
@@ -27,10 +32,19 @@
     "enabled": false,
     "scope": "local"
   },
+  "shared": {
+    "write_enabled": false
+  },
+  "migration": {
+    "allow_external_paths": false
+  },
   "security": {
     "db_encryption_enabled": false
   },
   "team": {
+    "id": "default",
+    "role": "reader",
+    "write_enabled": false,
     "backend": "local"
   }
 }
