@@ -12,6 +12,7 @@
     "build": "bun run build:cli && bun run build:mcp",
     "build:cli": "tsc -p apps/cli/tsconfig.json",
     "build:mcp": "tsc -p apps/mcp-server/tsconfig.json",
+    "cli:test": "bun --cwd apps/cli test",
     "pack": "bun run build && node infra/scripts/pack-packages.mjs",
     "pack:cli": "bun run build:cli && node infra/scripts/pack-packages.mjs apps/cli",
     "pack:mcp": "bun run build:mcp && node infra/scripts/pack-packages.mjs apps/mcp-server",

@@ -7,7 +7,7 @@ import { updateCommand } from "./commands/update.js";
 
 const [, , command, ...args] = process.argv;
 
-async function main(): Promise<void> {
+export async function runCommand(command: string | undefined, args: string[]): Promise<void> {
   switch (command) {
     case "remember":
     case "note":
@@ -35,6 +35,10 @@ async function main(): Promise<void> {
   }
 }
 
+async function main(): Promise<void> {
+  await runCommand(command, args);
+}
+
 function printHelp(): void {
   console.log(`codex-mem
 
@@ -51,7 +55,9 @@ Environment:
 `);
 }
 
-main().catch((error: unknown) => {
-  console.error(error instanceof Error ? error.message : String(error));
-  process.exit(1);
-});
+if (import.meta.main) {
+  main().catch((error: unknown) => {
+    console.error(error instanceof Error ? error.message : String(error));
+    process.exit(1);
+  });
+}

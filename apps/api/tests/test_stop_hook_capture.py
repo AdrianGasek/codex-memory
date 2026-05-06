@@ -225,6 +225,7 @@ def test_post_tool_use_captures_ci_build_and_test_failures(monkeypatch):
 
 
 def test_post_tool_use_captures_runtime_log_errors(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
     hook_memory = load_hook_module()
     posted = []
     log_path = tmp_path / "logs" / "app.log"
@@ -632,6 +633,51 @@ def test_startup_api_availability_check_fails_closed(monkeypatch):
     monkeypatch.setattr(hook_memory.urllib.request, "urlopen", fail_urlopen)
 
     assert hook_memory.api_available() is False
+
+
+def test_session_start_injects_memory_context(monkeypatch, capsys):
+    hook_memory = load_hook_module()
+    monkeypatch.setattr(hook_memory.sys, "argv", ["hook_memory.py", "session-start"])
+    monkeypatch.setattr(hook_memory, "read_stdin_json", lambda: {"cwd": "project"})
+    monkeypatch.setattr(hook_memory, "api_available", lambda: True)
+    monkeypatch.setattr(
+        hook_memory,
+        "fetch_injection",
+        lambda query: {"additional_context": f"Injected context for {query}"},
+    )
+
+    hook_memory.main()
+
+    output = json.loads(capsys.readouterr().out)
+    assert output == {
+        "continue": True,
+        "hookSpecificOutput": {
+            "hookEventName": "SessionStart",
+            "additionalContext": "Injected context for project",
+        },
+    }
+
+
+def test_user_prompt_submit_injects_memory_context(monkeypatch, capsys):
+    hook_memory = load_hook_module()
+    monkeypatch.setattr(hook_memory.sys, "argv", ["hook_memory.py", "user-prompt"])
+    monkeypatch.setattr(hook_memory, "read_stdin_json", lambda: {"prompt": "current task"})
+    monkeypatch.setattr(
+        hook_memory,
+        "fetch_injection",
+        lambda query: {"additional_context": f"Injected context for {query}"},
+    )
+
+    hook_memory.main()
+
+    output = json.loads(capsys.readouterr().out)
+    assert output == {
+        "continue": True,
+        "hookSpecificOutput": {
+            "hookEventName": "UserPromptSubmit",
+            "additionalContext": "Injected context for current task",
+        },
+    }
 
 
 def test_degraded_output_continues_without_injection():

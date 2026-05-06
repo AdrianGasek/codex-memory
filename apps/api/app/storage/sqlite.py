@@ -8,6 +8,7 @@ from pathlib import Path
 import json
 import os
 import re
+import shutil
 import sqlite3
 from uuid import uuid4
 
@@ -48,7 +49,7 @@ SECRET_PATTERNS = [
     re.compile(r"\b\d{3}-\d{2}-\d{4}\b"),
     re.compile(r"(?<![\d.])(?:\+?\d[\d ()-]{7,}\d)(?![\d.])"),
 ]
-SCHEMA_VERSION = "1"
+SCHEMA_VERSION = "2"
 
 
 class MemoryStore:
@@ -78,6 +79,9 @@ class MemoryStore:
         return conn
 
     def _init_db(self) -> None:
+        previous_schema_version = self._existing_schema_version()
+        if previous_schema_version and previous_schema_version != SCHEMA_VERSION:
+            self._backup_before_migration(previous_schema_version)
         with self._connect() as conn:
             conn.execute(
                 """
@@ -192,6 +196,31 @@ class MemoryStore:
             conn.execute("CREATE INDEX IF NOT EXISTS idx_memory_links_to ON memory_links(to_id)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_memory_audit_timestamp ON memory_audit(timestamp)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_memory_audit_memory_id ON memory_audit(memory_id)")
+
+    def _existing_schema_version(self) -> str | None:
+        if not self.db_path.exists():
+            return None
+        try:
+            with self._connect() as conn:
+                table = conn.execute(
+                    "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'memory_metadata'"
+                ).fetchone()
+                if not table:
+                    return None
+                row = conn.execute("SELECT value FROM memory_metadata WHERE key = 'schema_version'").fetchone()
+        except sqlite3.Error:
+            return None
+        return str(row["value"]) if row else None
+
+    def _backup_before_migration(self, previous_schema_version: str) -> Path | None:
+        if not self.db_path.exists():
+            return None
+        backup_path = self.db_path.with_suffix(
+            f"{self.db_path.suffix}.v{previous_schema_version}-to-v{SCHEMA_VERSION}.bak"
+        )
+        if not backup_path.exists():
+            shutil.copy2(self.db_path, backup_path)
+        return backup_path
 
     def _ensure_column(self, conn: sqlite3.Connection, name: str, definition: str) -> None:
         columns = {row["name"] for row in conn.execute("PRAGMA table_info(memories)").fetchall()}

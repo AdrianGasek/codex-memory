@@ -26,6 +26,21 @@ bun run cli query "SQLite"
 bun run cli debug
 ```
 
+## Operating The API
+
+Start the local API from the repository root:
+
+```powershell
+$env:CODEX_MEM_API_URL = "http://127.0.0.1:8000"
+uv run --project apps/api uvicorn app.main:app --host 127.0.0.1 --port 8000
+```
+
+Stop the API with `Ctrl+C` in the terminal running `uvicorn`. Confirm shutdown or readiness with:
+
+```powershell
+Invoke-RestMethod http://127.0.0.1:8000/health
+```
+
 On Windows, if PowerShell blocks `npm.ps1`, use `npm.cmd` directly:
 
 ```powershell
@@ -99,6 +114,12 @@ The current local DB protection option is legacy content hiding for selected SQL
 
 Until that implementation is complete, do not treat the SQLite file, Markdown exports, logs, or process environment as safe places for secrets.
 
+### SQLite Schema Migration Recovery
+
+When Codex-Mem opens an existing SQLite database with an older `schema_version`, it writes a sibling backup before applying metadata or schema updates. The backup name uses the pattern `codex-mem.sqlite3.v<old>-to-v<new>.bak`.
+
+To recover manually, stop the API, move the current database aside, copy the matching backup back to the configured DB path, and restart the API with the previous compatible code/configuration. Keep the moved current database until you have confirmed the restored database contains the expected memories.
+
 ### Vector Backend Storage Model
 
 SQLite is the source of truth for memory entries and stores the local embedding cache used by the `local` backend. External vector backends such as Chroma and pgvector are index backends: they store embedding records keyed by memory id, document text, and non-secret routing metadata for similarity search, while the canonical memory payload remains in SQLite. If an external backend is unavailable, Codex-Mem reports a clear backend error. Set `vector.allow_local_fallback` or `CODEX_MEM_VECTOR_ALLOW_LOCAL_FALLBACK=true` only when local semantic search is an acceptable explicit degraded mode.
@@ -171,6 +192,15 @@ bun run apps/mcp-server/src/server.ts
 ```
 
 The HTTP transport exposes `GET /health` and JSON-RPC `POST /mcp`; keep the API service reachable through `CODEX_MEM_API_URL`.
+
+## Troubleshooting
+
+- API unavailable: run `Invoke-RestMethod http://127.0.0.1:8000/health`, verify `CODEX_MEM_API_URL`, then restart `uvicorn`.
+- Hook injection is empty: run `bun run cli debug --query "project memory"` and inspect `/memory/health/diagnostics`.
+- MCP tools fail: verify `bun run apps/mcp-server/src/server.ts` starts and that the MCP process inherits `CODEX_MEM_API_URL`.
+- Config warnings: call `GET /memory/config/diagnostics` or run `bun run cli debug`.
+- Docker smoke blocked: start Docker Desktop or another Docker daemon, then rerun the Docker build commands from `.codex/feedback-review/closure-roadmap.md`.
+- Encryption startup failure: set `CODEX_MEM_DB_ENCRYPTION_KEY` when `CODEX_MEM_DB_ENCRYPTION_ENABLED=true`.
 
 ## Memory Files
 

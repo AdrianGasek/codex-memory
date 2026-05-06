@@ -13,6 +13,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "dev": "bun run src/index.ts"
+    "dev": "bun run src/index.ts",
+    "test": "bun test tests"
   }
 }

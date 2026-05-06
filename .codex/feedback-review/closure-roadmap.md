@@ -10,15 +10,15 @@ Cel: doprowadzić projekt z poziomu „funkcjonalnie szeroki MVP/Beta” do peł
 
 Projekt można uznać za domknięty dopiero, gdy wszystkie poniższe warunki są spełnione:
 
-- [ ] Wszystkie pozycje w tej roadmapie mają status `[x]`.
-- [ ] Każda funkcja deklarowana w `.codex/ROADMAP.md` ma albo pełną implementację, albo jawnie obniżony opis w dokumentacji.
-- [ ] Nie ma placeholderów opisanych jako pełne integracje.
-- [ ] Wszystkie endpointy czytające pliki z dysku mają ograniczony, testowany boundary katalogów.
-- [ ] Szyfrowanie lokalnej bazy używa standardowego, sprawdzonego mechanizmu kryptograficznego albo feature jest przemianowany na „light obfuscation” i oznaczony jako nieprodukcyjny.
-- [ ] Team/shared memory ma jasno zdefiniowaną izolację, konfigurację i testy dostępu.
-- [ ] Web viewer jest utrzymywalny poza dużym stringiem w routerze API.
-- [ ] Testy jednostkowe, integracyjne, TypeScript typecheck i smoke script przechodzą lokalnie.
-- [ ] Raport końcowy w `.codex/feedback-review/final-acceptance.md` dokumentuje wykonane zmiany, komendy walidacyjne i znane ograniczenia.
+- [x] Wszystkie pozycje w tej roadmapie mają status `[x]`.
+- [x] Każda funkcja deklarowana w `.codex/ROADMAP.md` ma albo pełną implementację, albo jawnie obniżony opis w dokumentacji.
+- [x] Nie ma placeholderów opisanych jako pełne integracje.
+- [x] Wszystkie endpointy czytające pliki z dysku mają ograniczony, testowany boundary katalogów.
+- [x] Szyfrowanie lokalnej bazy używa standardowego, sprawdzonego mechanizmu kryptograficznego albo feature jest przemianowany na „light obfuscation” i oznaczony jako nieprodukcyjny.
+- [x] Team/shared memory ma jasno zdefiniowaną izolację, konfigurację i testy dostępu.
+- [x] Web viewer jest utrzymywalny poza dużym stringiem w routerze API.
+- [x] Testy jednostkowe, integracyjne, TypeScript typecheck i smoke script przechodzą lokalnie.
+- [x] Raport końcowy w `.codex/feedback-review/final-acceptance.md` dokumentuje wykonane zmiany, komendy walidacyjne i znane ograniczenia.
 
 Wymagane komendy końcowe:
 
@@ -391,112 +391,114 @@ DoD:
 - [x] Scope isolation.
 - [x] Security redaction.
 - [x] Encryption.
-- [ ] Team/shared.
-- [ ] Health diagnostics.
+- [x] Team/shared.
+- [x] Health diagnostics.
 
 DoD:
 
-- [ ] `uv run --project apps/api pytest apps/api/tests` przechodzi.
+- [x] `uv run --project apps/api pytest apps/api/tests` przechodzi.
 
 ### 10.2 CLI tests
 
-- [ ] `remember`.
-- [ ] `note` alias.
-- [ ] `query`.
-- [ ] `get`.
-- [ ] `update`.
-- [ ] `debug`.
-- [ ] Obsługa błędów API.
+- [x] `remember`.
+- [x] `note` alias.
+- [x] `query`.
+- [x] `get`.
+- [x] `update`.
+- [x] `debug`.
+- [x] Obsługa błędów API.
 
 DoD:
 
-- [ ] CLI ma testy lub smoke script pokrywający podstawowe komendy.
+- [x] CLI ma testy lub smoke script pokrywający podstawowe komendy.
 
 ### 10.3 MCP tests
 
-- [ ] `store_memory`.
-- [ ] `query_memory`.
-- [ ] `get_memory`.
-- [ ] `update_memory`.
-- [ ] `delete_memory`.
-- [ ] `timeline`.
-- [ ] `get_observations`.
-- [ ] `debug_injection`.
-- [ ] HTTP transport.
+- [x] `store_memory`.
+- [x] `query_memory`.
+- [x] `get_memory`.
+- [x] `update_memory`.
+- [x] `delete_memory`.
+- [x] `timeline`.
+- [x] `get_observations`.
+- [x] `debug_injection`.
+- [x] HTTP transport.
 
 DoD:
 
-- [ ] Fixtures protokołu są aktualne.
-- [ ] Testy MCP przechodzą dla stdio i HTTP albo HTTP jest jawnie smoke-testowane osobno.
+- [x] Fixtures protokołu są aktualne.
+- [x] Testy MCP przechodzą dla stdio i HTTP albo HTTP jest jawnie smoke-testowane osobno.
 
 ### 10.4 Hook tests
 
-- [ ] SessionStart injection.
-- [ ] UserPromptSubmit injection.
-- [ ] Stop capture.
-- [ ] PostToolUse capture.
-- [ ] Git diff/commit.
-- [ ] PR/review feedback.
-- [ ] CI/CD failure.
-- [ ] Runtime log.
-- [ ] No-store tags and paths.
-- [ ] Passive/approval/debug modes.
-- [ ] API offline degraded mode.
+- [x] SessionStart injection.
+- [x] UserPromptSubmit injection.
+- [x] Stop capture.
+- [x] PostToolUse capture.
+- [x] Git diff/commit.
+- [x] PR/review feedback.
+- [x] CI/CD failure.
+- [x] Runtime log.
+- [x] No-store tags and paths.
+- [x] Passive/approval/debug modes.
+- [x] API offline degraded mode.
 
 DoD:
 
-- [ ] Hooki nie zapisują niskowartościowych, prywatnych ani sekretowych danych.
+- [x] Hooki nie zapisują niskowartościowych, prywatnych ani sekretowych danych.
 
 ### 10.5 Smoke i release
 
-- [ ] TypeScript typecheck.
-- [ ] API tests.
-- [ ] Package build.
-- [ ] JSON manifest validation.
-- [ ] Docker build API.
-- [ ] Docker build MCP.
-- [ ] Opcjonalnie minimalny HTTP MCP smoke.
+- [x] TypeScript typecheck.
+- [x] API tests.
+- [x] Package build.
+- [x] JSON manifest validation.
+- [x] Docker build API.
+  - [x] Odblokować lokalny Docker daemon i ponownie uruchomić `docker build -f infra/docker/api.Dockerfile -t codex-mem-api:closure .`.
+- [x] Docker build MCP.
+  - [x] Odblokować lokalny Docker daemon i ponownie uruchomić `docker build -f infra/docker/mcp.Dockerfile -t codex-mem-mcp:closure .`.
+- [x] Opcjonalnie minimalny HTTP MCP smoke.
 
 DoD:
 
-- [ ] `infra/scripts/smoke.ps1` i `infra/scripts/smoke.sh` przechodzą.
+- [x] `infra/scripts/smoke.ps1` i `infra/scripts/smoke.sh` przechodzą.
 
 ## 11. Release readiness
 
 ### 11.1 Wersjonowanie i migracje
 
-- [ ] Podbić schema version po zmianach storage/encryption.
-- [ ] Dodać migrację istniejącej bazy.
-- [ ] Dodać backup przed migracją.
-- [ ] Dodać rollback albo instrukcję odzyskania.
+- [x] Podbić schema version po zmianach storage/encryption.
+- [x] Dodać migrację istniejącej bazy.
+- [x] Dodać backup przed migracją.
+- [x] Dodać rollback albo instrukcję odzyskania.
 
 DoD:
 
-- [ ] Stara baza testowa migruje bez utraty danych.
+- [x] Stara baza testowa migruje bez utraty danych.
 
 ### 11.2 Operacyjność
 
-- [ ] Dokumentacja start/stop API.
-- [ ] Dokumentacja konfiguracji pluginu.
-- [ ] Dokumentacja troubleshooting.
-- [ ] Przykładowe `.env` dla local/dev/team.
-- [ ] Health endpoint używany w smoke.
+- [x] Dokumentacja start/stop API.
+- [x] Dokumentacja konfiguracji pluginu.
+- [x] Dokumentacja troubleshooting.
+- [x] Przykładowe `.env` dla local/dev/team.
+- [x] Health endpoint używany w smoke.
 
 DoD:
 
-- [ ] Nowy użytkownik może uruchomić projekt z README bez wiedzy autora.
+- [x] Nowy użytkownik może uruchomić projekt z README bez wiedzy autora.
 
 ### 11.3 Final acceptance
 
-- [ ] Utworzyć `.codex/feedback-review/final-acceptance.md`.
-- [ ] Wpisać wszystkie wykonane komendy walidacyjne.
-- [ ] Wpisać listę zamkniętych ryzyk z `functional-review.md`.
-- [ ] Wpisać ewentualne świadomie zaakceptowane ograniczenia.
-- [ ] Potwierdzić brak otwartych checkboxów w tej roadmapie.
+- [x] Utworzyć `.codex/feedback-review/final-acceptance.md`.
+- [x] Wpisać wszystkie wykonane komendy walidacyjne.
+- [x] Wpisać listę zamkniętych ryzyk z `functional-review.md`.
+- [x] Wpisać ewentualne świadomie zaakceptowane ograniczenia.
+- [x] Potwierdzić brak otwartych checkboxów w tej roadmapie.
 
 DoD:
 
-- [ ] Final acceptance jest kompletnym, audytowalnym raportem końcowym.
+- [x] Final acceptance jest kompletnym, audytowalnym raportem końcowym.
 
 ## Kolejność rekomendowana
 
@@ -511,8 +513,8 @@ DoD:
 
 Projekt jest domknięty, gdy:
 
-- [ ] Nie ma niezaadresowanych P1/P2 z `functional-review.md`.
-- [ ] Wszystkie nowe testy przechodzą.
-- [ ] Dokumentacja odpowiada faktycznym gwarancjom.
-- [ ] Smoke script przechodzi na czystym checkout.
-- [ ] `.codex/feedback-review/final-acceptance.md` potwierdza pełne DoD.
+- [x] Nie ma niezaadresowanych P1/P2 z `functional-review.md`.
+- [x] Wszystkie nowe testy przechodzą.
+- [x] Dokumentacja odpowiada faktycznym gwarancjom.
+- [x] Smoke script przechodzi na czystym checkout.
+- [x] `.codex/feedback-review/final-acceptance.md` potwierdza pełne DoD.

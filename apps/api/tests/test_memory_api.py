@@ -2171,7 +2171,43 @@ def test_memory_metadata_exposes_schema_version(tmp_path, monkeypatch):
     response = client.get("/memory/metadata")
 
     assert response.status_code == 200
-    assert response.json()["schema_version"] == "1"
+    assert response.json()["schema_version"] == "2"
+
+
+def test_existing_database_schema_metadata_migrates_without_data_loss(tmp_path):
+    db_path = tmp_path / "db" / "codex-mem.sqlite3"
+    codex_dir = tmp_path / ".codex"
+    store = MemoryStore(db_path=db_path, codex_dir=codex_dir, default_project="tests")
+    entry = store.store(MemoryCreate(type="fact", title="Keep during migration", context="Existing data survives."))
+    with sqlite3.connect(db_path) as conn:
+        conn.execute("UPDATE memory_metadata SET value = '1' WHERE key = 'schema_version'")
+
+    migrated = MemoryStore(db_path=db_path, codex_dir=codex_dir, default_project="tests")
+
+    assert migrated.metadata()["schema_version"] == "2"
+    loaded = migrated.get(entry.id)
+    assert loaded is not None
+    assert loaded.title == "Keep during migration"
+
+
+def test_existing_database_migration_writes_backup_before_schema_update(tmp_path):
+    db_path = tmp_path / "db" / "codex-mem.sqlite3"
+    codex_dir = tmp_path / ".codex"
+    store = MemoryStore(db_path=db_path, codex_dir=codex_dir, default_project="tests")
+    entry = store.store(MemoryCreate(type="fact", title="Backup before migration", context="Existing data survives."))
+    with sqlite3.connect(db_path) as conn:
+        conn.execute("UPDATE memory_metadata SET value = '1' WHERE key = 'schema_version'")
+
+    MemoryStore(db_path=db_path, codex_dir=codex_dir, default_project="tests")
+
+    backup_path = db_path.with_suffix(".sqlite3.v1-to-v2.bak")
+    assert backup_path.exists()
+    with sqlite3.connect(backup_path) as conn:
+        conn.row_factory = sqlite3.Row
+        backup_version = conn.execute("SELECT value FROM memory_metadata WHERE key = 'schema_version'").fetchone()
+        backup_entry = conn.execute("SELECT title FROM memories WHERE id = ?", (entry.id,)).fetchone()
+    assert backup_version["value"] == "1"
+    assert backup_entry["title"] == "Backup before migration"
 
 
 def test_config_diagnostics_endpoint(monkeypatch):
