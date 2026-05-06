@@ -366,7 +366,7 @@ DoD:
 DoD:
 
 - [x] Endpoint health pokazuje `ok`, `warning` lub `error` per komponent.
-- [ ] Nieudany komponent ma actionable message.
+- [x] Nieudany komponent ma actionable message.
 
 ### 9.2 Debug traces
 
