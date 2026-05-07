@@ -9,13 +9,16 @@
     "apps/mcp-server"
   ],
   "scripts": {
-    "build": "bun run build:cli && bun run build:mcp",
+    "build": "bun run build:cli && bun run build:mcp && node infra/scripts/stage-cli-runtime.mjs",
     "build:cli": "tsc -p apps/cli/tsconfig.json",
     "build:mcp": "tsc -p apps/mcp-server/tsconfig.json",
     "cli:test": "bun --cwd apps/cli test",
     "pack": "bun run build && node infra/scripts/pack-packages.mjs",
-    "pack:cli": "bun run build:cli && node infra/scripts/pack-packages.mjs apps/cli",
+    "pack:cli": "bun run build && node infra/scripts/pack-packages.mjs apps/cli",
     "pack:mcp": "bun run build:mcp && node infra/scripts/pack-packages.mjs apps/mcp-server",
+    "pack:smoke": "bun run pack:cli && node infra/scripts/npm-pack-smoke.mjs",
+    "smoke:npx-install": "bun run pack:cli && node infra/scripts/smoke-npx-install.mjs",
+    "release:check": "node infra/scripts/check-publishable-package.mjs apps/cli/package.json",
     "typecheck": "tsc -p apps/cli/tsconfig.json --noEmit && tsc -p apps/mcp-server/tsconfig.json --noEmit",
     "api:test": "uv run --project apps/api pytest apps/api/tests",
     "api:dev": "uv run --project apps/api uvicorn app.main:app --reload --host 127.0.0.1 --port 8000",

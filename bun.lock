@@ -10,7 +10,7 @@
       },
     },
     "apps/cli": {
-      "name": "@codex-mem/cli",
+      "name": "codex-mem",
       "version": "0.1.0",
       "bin": {
         "codex-mem": "./src/index.ts",
@@ -22,7 +22,7 @@
     },
   },
   "packages": {
-    "@codex-mem/cli": ["@codex-mem/cli@workspace:apps/cli"],
+    "codex-mem": ["codex-mem@workspace:apps/cli"],
 
     "@codex-mem/mcp-server": ["@codex-mem/mcp-server@workspace:apps/mcp-server"],
 

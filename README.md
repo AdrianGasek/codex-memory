@@ -12,6 +12,29 @@ Codex-Mem is a repo-local persistent memory layer for Codex agents. It stores re
 
 ## Quick Start
 
+For normal project use, install Codex-Mem from npm in the repository where you want memory enabled:
+
+```bash
+npx codex-mem install
+codex-mem status
+codex-mem remember --type decision --title "Use SQLite first" --context "MVP storage" --resolution "Embeddings stay local by default."
+codex-mem query "SQLite"
+```
+
+The installer creates a lightweight `.codex/mem.config.json` in the current repo, installs API/MCP/plugin runtime assets under your user `.codex-mem` directory, starts the local worker, and wires the Codex plugin metadata to that user-level runtime.
+
+## What Gets Installed
+
+Codex-Mem installs a local FastAPI memory service, a SQLite database under your user runtime directory, an MCP stdio server, Codex hook commands, and a plugin marketplace entry for the current repo. The repo keeps only lightweight configuration in `.codex/mem.config.json` and `.agents/plugins/marketplace.json`; runtime files and logs live in your `.codex-mem` directory.
+
+## Privacy And Local Data
+
+Codex-Mem is local-first. Memory data is stored on your machine in SQLite under `.codex-mem/data`, and worker logs are written under `.codex-mem/logs`. Do not store secrets, tokens, credentials, or private personal data as memory. To disconnect a repo, run `codex-mem uninstall`; to remove local memory data as well, use the uninstall flow with `--delete-data` when that option is enabled for your release, or remove the `.codex-mem` directory manually after stopping the worker.
+
+## Developer Toolkit
+
+Use this path when contributing to Codex-Mem itself or when you intentionally want the repo-local development services.
+
 ```bash
 bun install
 uv sync --project apps/api
@@ -25,6 +48,10 @@ bun run cli remember --type decision --title "Use SQLite first" --context "MVP s
 bun run cli query "SQLite"
 bun run cli debug
 ```
+
+## Product Install Vs Developer Toolkit
+
+Use product install for day-to-day memory in another repo: `npx codex-mem install` manages runtime files in `.codex-mem`, starts the worker, and keeps only lightweight config in the target project. Use Developer Toolkit for contributing to this repository: you run `bun install`, `uv sync`, `api:dev`, `mcp:dev`, `cli:test`, and `api:test` directly from the checkout.
 
 ## Operating The API
 
@@ -195,6 +222,11 @@ The HTTP transport exposes `GET /health` and JSON-RPC `POST /mcp`; keep the API 
 
 ## Troubleshooting
 
+- Windows PowerShell blocks npm scripts: run `npm.cmd` or start PowerShell with an execution policy that allows local npm shims.
+- Port 8000 is busy: `codex-mem install` reuses a healthy Codex-Mem API on that port or selects the next free local port and writes it to config.
+- npm is missing: install Node.js with npm first; product install assumes Node.js and npm as the minimum bootstrap tools.
+- Permission errors in `.codex-mem`: check ownership of your user runtime directory, stop the worker, then rerun `codex-mem install`.
+- Offline API: run `codex-mem status`, then `codex-mem restart`; hooks should report degraded mode instead of blocking Codex work.
 - API unavailable: run `Invoke-RestMethod http://127.0.0.1:8000/health`, verify `CODEX_MEM_API_URL`, then restart `uvicorn`.
 - Hook injection is empty: run `bun run cli debug --query "project memory"` and inspect `/memory/health/diagnostics`.
 - MCP tools fail: verify `bun run apps/mcp-server/src/server.ts` starts and that the MCP process inherits `CODEX_MEM_API_URL`.

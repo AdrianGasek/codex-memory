@@ -1,5 +1,5 @@
 {
-  "name": "@codex-mem/cli",
+  "name": "codex-mem",
   "version": "0.1.0",
   "type": "module",
   "main": "./dist/index.js",
@@ -8,12 +8,17 @@
     "codex-mem": "./dist/index.js"
   },
   "files": [
-    "dist"
+    "dist",
+    "runtime"
   ],
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "dev": "bun run src/index.ts",
+    "prepublishOnly": "node ../../infra/scripts/check-publishable-package.mjs package.json",
     "test": "bun test tests"
   }
 }

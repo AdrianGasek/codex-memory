@@ -1,14 +1,27 @@
 #!/usr/bin/env bun
+import { readFileSync } from "node:fs";
 import { debugCommand } from "./commands/debug.js";
+import { devCommand } from "./commands/dev.js";
+import { doctorCommand } from "./commands/doctor.js";
 import { getCommand } from "./commands/get.js";
+import { hookCommand } from "./commands/hook.js";
+import { installCommand } from "./commands/install.js";
 import { queryCommand } from "./commands/query.js";
 import { rememberCommand } from "./commands/remember.js";
+import { uninstallCommand } from "./commands/uninstall.js";
 import { updateCommand } from "./commands/update.js";
+import { upgradeCommand } from "./commands/upgrade.js";
+import { restartCommand, startCommand, statusCommand, stopCommand } from "./commands/workerCommands.js";
 
 const [, , command, ...args] = process.argv;
 
 export async function runCommand(command: string | undefined, args: string[]): Promise<void> {
   switch (command) {
+    case "--version":
+    case "-v":
+    case "version":
+      printVersion();
+      return;
     case "remember":
     case "note":
     case "/note":
@@ -25,6 +38,36 @@ export async function runCommand(command: string | undefined, args: string[]): P
       return;
     case "debug":
       await debugCommand(args);
+      return;
+    case "doctor":
+      await doctorCommand();
+      return;
+    case "dev":
+      devCommand(args);
+      return;
+    case "install":
+      await installCommand(args);
+      return;
+    case "hook":
+      hookCommand(args);
+      return;
+    case "start":
+      await startCommand(args);
+      return;
+    case "stop":
+      stopCommand();
+      return;
+    case "restart":
+      await restartCommand(args);
+      return;
+    case "status":
+      statusCommand();
+      return;
+    case "uninstall":
+      uninstallCommand(args);
+      return;
+    case "upgrade":
+      upgradeCommand();
       return;
     case "help":
     case undefined:
@@ -49,10 +92,22 @@ Commands:
   get <id>
   query "search terms" --profile short
   debug --query "current task" --profile deep
+  dev doctor
+  doctor
+  install --yes
+  hook <session-start|user-prompt|stop|post-tool-use>
+  status | start | stop | restart
+  uninstall
+  upgrade
 
 Environment:
   CODEX_MEM_API_URL=http://127.0.0.1:8000
 `);
+}
+
+function printVersion(): void {
+  const packageJson = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
+  console.log(String(packageJson.version));
 }
 
 if (import.meta.main) {
