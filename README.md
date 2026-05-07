@@ -1,14 +1,6 @@
 # Codex-Mem
 
-Codex-Mem is a repo-local persistent memory layer for Codex agents. It stores reusable project knowledge in SQLite, exposes it through an HTTP API, CLI, MCP tools, and Codex hooks, then injects the most relevant memory back into future sessions.
-
-## Components
-
-- `apps/api` - FastAPI service with SQLite storage and Markdown export.
-- `apps/cli` - TypeScript CLI for `remember`, `query`, and `debug`.
-- `apps/mcp-server` - stdio MCP server exposing memory tools.
-- `plugins/codex-mem` - repo-local Codex plugin scaffold with hooks and MCP config.
-- `shared/schemas` and `shared/prompts` - shared memory shape and prompt templates.
+Codex-Mem is a local-first persistent memory layer for Codex agents. It stores reusable project knowledge in SQLite, exposes it through an HTTP API, CLI, MCP tools, and Codex hooks, then injects the most relevant memory back into future sessions.
 
 ## Quick Start
 
@@ -22,6 +14,14 @@ codex-mem query "SQLite"
 ```
 
 The installer creates a lightweight `.codex/mem.config.json` in the current repo, installs API/MCP/plugin runtime assets under your user `.codex-mem` directory, starts the local worker, and wires the Codex plugin metadata to that user-level runtime.
+
+Useful day-to-day commands:
+
+```bash
+codex-mem doctor
+codex-mem restart
+codex-mem uninstall
+```
 
 ## What Gets Installed
 
@@ -53,25 +53,27 @@ bun run cli debug
 
 Use product install for day-to-day memory in another repo: `npx codex-mem install` manages runtime files in `.codex-mem`, starts the worker, and keeps only lightweight config in the target project. Use Developer Toolkit for contributing to this repository: you run `bun install`, `uv sync`, `api:dev`, `mcp:dev`, `cli:test`, and `api:test` directly from the checkout.
 
-## Operating The API
+## Repository Components
 
-Start the local API from the repository root:
+- `apps/api` - FastAPI service with SQLite storage and Markdown export.
+- `apps/cli` - TypeScript CLI for product install, worker management, `remember`, `query`, and diagnostics.
+- `apps/mcp-server` - stdio and HTTP MCP server exposing memory tools.
+- `plugins/codex-mem` - repo-local Codex plugin scaffold used by the Developer Toolkit.
+- `shared/schemas` and `shared/prompts` - shared memory shape and prompt templates.
+
+## Developer Toolkit: Manual API
+
+Product installs start and manage the API with `codex-mem start`, `codex-mem stop`, and `codex-mem restart`. When contributing to this repository, you can also run the API manually from the checkout:
 
 ```powershell
 $env:CODEX_MEM_API_URL = "http://127.0.0.1:8000"
 uv run --project apps/api uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
 
-Stop the API with `Ctrl+C` in the terminal running `uvicorn`. Confirm shutdown or readiness with:
+Stop the manual API with `Ctrl+C` in the terminal running `uvicorn`. Confirm shutdown or readiness with:
 
 ```powershell
 Invoke-RestMethod http://127.0.0.1:8000/health
-```
-
-On Windows, if PowerShell blocks `npm.ps1`, use `npm.cmd` directly:
-
-```powershell
-npm.cmd install
 ```
 
 ## API
@@ -84,7 +86,7 @@ npm.cmd install
 
 ## Current Guarantees
 
-Codex-Mem stores canonical memory entries in repo-local SQLite, exports readable Markdown/JSON companion files, supports local semantic search, and exposes memory through HTTP, CLI, MCP stdio, MCP HTTP, and Codex hooks. Markdown import is bounded to the repository by default, external imports require explicit opt-in, and team/shared scopes are namespace-isolated with tests for access boundaries. Optional Chroma and pgvector modes use explicit backend clients and fail closed unless local fallback is configured.
+Codex-Mem stores canonical memory entries in SQLite, exports readable Markdown/JSON companion files, supports local semantic search, and exposes memory through HTTP, CLI, MCP stdio, MCP HTTP, and Codex hooks. Product installs keep runtime data under the user `.codex-mem` directory; Developer Toolkit runs can use repo-local paths for local testing. Markdown import is bounded to the repository by default, external imports require explicit opt-in, and team/shared scopes are namespace-isolated with tests for access boundaries. Optional Chroma and pgvector modes use explicit backend clients and fail closed unless local fallback is configured.
 
 ## Known Limitations
 
@@ -96,9 +98,9 @@ The project remains a local-first beta rather than a hardened multi-tenant servi
 - `query_memory`
 - `delete_memory`
 
-## Repo-local Codex Plugin
+## Developer Toolkit: Repo-local Codex Plugin
 
-From the repository root, start the API used by hooks and MCP:
+Product installs configure Codex hook commands through the installed `codex-mem` runtime. When developing the repo-local plugin scaffold, start the API used by hooks and MCP from the repository root:
 
 ```powershell
 $env:CODEX_MEM_API_URL = "http://127.0.0.1:8000"
@@ -131,7 +133,7 @@ $env:CODEX_MEM_DB_ENCRYPTION_ENABLED = "false"
 $env:CODEX_MEM_DB_ENCRYPTION_KEY = ""                  # required when DB encryption is enabled
 ```
 
-Codex hooks require a reachable API service, `CODEX_MEM_API_URL`, the repo-local plugin metadata in `.agents/plugins/marketplace.json`, and `CODEX_MEM_HOOKS_ENABLED=true` unless a deployment intentionally runs without hooks. In degraded mode, hooks should avoid writes when the API is offline and surface diagnostics instead of failing the agent workflow.
+Codex hooks require a reachable API service, `CODEX_MEM_API_URL`, plugin metadata in `.agents/plugins/marketplace.json`, and `CODEX_MEM_HOOKS_ENABLED=true` unless a deployment intentionally runs without hooks. In degraded mode, hooks should avoid writes when the API is offline and surface diagnostics instead of failing the agent workflow.
 
 Mode summary: `active` captures and injects through the API, `passive` shows capture suggestions without storing them, `approval` requires review before auto-captured memory is persisted, `debug` adds verbose diagnostics, and degraded mode is entered when hooks or MCP cannot reach the API.
 
@@ -187,7 +189,7 @@ bun run cli query "vector backend"
 
 ## Agent Compatibility
 
-Codex uses the repo-local plugin metadata in `plugins/codex-mem/.codex-plugin/plugin.json` and the MCP server config in `plugins/codex-mem/.mcp.json`.
+Product installs wire the current repository to the installed Codex-Mem runtime. Developer Toolkit runs can use the repo-local plugin metadata in `plugins/codex-mem/.codex-plugin/plugin.json` and the MCP server config in `plugins/codex-mem/.mcp.json`.
 
 ### MCP stdio
 
@@ -222,15 +224,16 @@ The HTTP transport exposes `GET /health` and JSON-RPC `POST /mcp`; keep the API 
 
 ## Troubleshooting
 
-- Windows PowerShell blocks npm scripts: run `npm.cmd` or start PowerShell with an execution policy that allows local npm shims.
+- Windows PowerShell blocks npm scripts: run the `.cmd` shim, for example `npx.cmd codex-mem install`, or start PowerShell with an execution policy that allows local npm shims.
 - Port 8000 is busy: `codex-mem install` reuses a healthy Codex-Mem API on that port or selects the next free local port and writes it to config.
 - npm is missing: install Node.js with npm first; product install assumes Node.js and npm as the minimum bootstrap tools.
 - Permission errors in `.codex-mem`: check ownership of your user runtime directory, stop the worker, then rerun `codex-mem install`.
 - Offline API: run `codex-mem status`, then `codex-mem restart`; hooks should report degraded mode instead of blocking Codex work.
-- API unavailable: run `Invoke-RestMethod http://127.0.0.1:8000/health`, verify `CODEX_MEM_API_URL`, then restart `uvicorn`.
-- Hook injection is empty: run `bun run cli debug --query "project memory"` and inspect `/memory/health/diagnostics`.
-- MCP tools fail: verify `bun run apps/mcp-server/src/server.ts` starts and that the MCP process inherits `CODEX_MEM_API_URL`.
-- Config warnings: call `GET /memory/config/diagnostics` or run `bun run cli debug`.
+- API unavailable: run `codex-mem doctor`, verify the configured API URL, then run `codex-mem restart`.
+- Hook injection is empty: run `codex-mem debug --query "project memory"` and inspect `/memory/health/diagnostics`.
+- MCP tools fail after product install: run `codex-mem doctor` and confirm the installed MCP process inherits the configured API URL.
+- MCP tools fail in the Developer Toolkit: verify `bun run apps/mcp-server/src/server.ts` starts and that the MCP process inherits `CODEX_MEM_API_URL`.
+- Config warnings: call `GET /memory/config/diagnostics` or run `codex-mem debug`.
 - Docker smoke blocked: start Docker Desktop or another Docker daemon, then rerun the Docker build commands from `.codex/feedback-review/closure-roadmap.md`.
 - Encryption startup failure: set `CODEX_MEM_DB_ENCRYPTION_KEY` when `CODEX_MEM_DB_ENCRYPTION_ENABLED=true`.
 
