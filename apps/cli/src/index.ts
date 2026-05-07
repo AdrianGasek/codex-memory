@@ -83,7 +83,7 @@ async function main(): Promise<void> {
 }
 
 function printHelp(): void {
-  console.log(`codex-mem
+  console.log(`codex-memory
 
 Commands:
   remember --type decision --title "..." --context "..." --resolution "..." --tag infra

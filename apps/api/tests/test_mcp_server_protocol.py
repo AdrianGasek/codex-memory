@@ -138,7 +138,7 @@ def test_mcp_server_initialize_and_tool_capabilities():
         process.terminate()
         process.wait(timeout=5)
 
-    assert initialized["result"]["serverInfo"]["name"] == "codex-mem"
+    assert initialized["result"]["serverInfo"]["name"] == "codex-memory"
     tool_names = {tool["name"] for tool in listed["result"]["tools"]}
     assert {
         "store_memory",

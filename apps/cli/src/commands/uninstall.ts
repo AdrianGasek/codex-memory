@@ -18,7 +18,7 @@ export function uninstallCommand(args: string[]): void {
   writeFileSync(backupPath, original, "utf8");
 
   const marketplace = JSON.parse(original) as { plugins?: Array<{ name?: string }> };
-  marketplace.plugins = (marketplace.plugins ?? []).filter((plugin) => plugin.name !== "codex-mem");
+  marketplace.plugins = (marketplace.plugins ?? []).filter((plugin) => !["codex-memory", "codex-mem"].includes(String(plugin.name)));
   mkdirSync(dirname(marketplacePath), { recursive: true });
   writeFileSync(marketplacePath, `${JSON.stringify(marketplace, null, 2)}\n`, "utf8");
   if (args.includes("--delete-data")) {

@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "codex-mem hook session-start",
+            "command": "codex-memory hook session-start",
             "timeout": 5,
             "statusMessage": "Loading Codex-Mem context"
           }
@@ -18,7 +18,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "codex-mem hook user-prompt",
+            "command": "codex-memory hook user-prompt",
             "timeout": 5,
             "statusMessage": "Retrieving Codex-Mem context"
           }
@@ -30,7 +30,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "codex-mem hook stop",
+            "command": "codex-memory hook stop",
             "timeout": 5,
             "statusMessage": "Codex-Mem capture pass"
           }
@@ -42,7 +42,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "codex-mem hook post-tool-use",
+            "command": "codex-memory hook post-tool-use",
             "timeout": 5,
             "statusMessage": "Codex-Mem tool-result capture"
           }

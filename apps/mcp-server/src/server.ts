@@ -206,7 +206,7 @@ async function dispatchMessage(request: JsonRpcRequest): Promise<JsonValue | nul
         return rpcResult(request.id, {
           protocolVersion: "2024-11-05",
           capabilities: { tools: {} },
-          serverInfo: { name: "codex-mem", version: "0.1.0" }
+          serverInfo: { name: "codex-memory", version: "0.1.0" }
         });
       case "tools/list":
         return rpcResult(request.id, { tools });

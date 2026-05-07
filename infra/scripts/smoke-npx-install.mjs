@@ -4,7 +4,7 @@ import { join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 
 const repoRoot = resolve(import.meta.dirname, "../..");
-const tarball = resolve(repoRoot, process.argv[2] ?? "dist/release/codex-mem-0.1.0.tgz");
+const tarball = resolve(repoRoot, process.argv[2] ?? "dist/release/codex-memory-0.1.0.tgz");
 const tempRepo = mkdtempSync(join(tmpdir(), "codex-mem-npx-repo-"));
 const tempHome = mkdtempSync(join(tmpdir(), "codex-mem-npx-home-"));
 const env = { ...process.env, CODEX_MEM_HOME: tempHome };
@@ -71,7 +71,7 @@ function readFrames(output) {
 
 try {
   run("npm", ["init", "-y"]);
-  run("npx", ["--yes", "--package", tarball, "codex-mem", "install", "--yes"]);
+  run("npx", ["--yes", "--package", tarball, "codex-memory", "install", "--yes"]);
   const configPath = join(tempRepo, ".codex", "mem.config.json");
   const marketplacePath = join(tempRepo, ".agents", "plugins", "marketplace.json");
   const pluginManifestPath = join(tempHome, "runtime", "plugin", ".codex-plugin", "plugin.json");
@@ -86,10 +86,10 @@ try {
   const diagnostics = await fetch(`${apiUrl}/memory/health/diagnostics`);
   assert(diagnostics.ok, "memory diagnostics health check failed");
 
-  run("npx", ["--yes", "--package", tarball, "codex-mem", "remember", "--type", "fact", "--title", "Smoke memory", "--context", "npx install smoke wrote this memory."]);
-  const queryOutput = runCapture("npx", ["--yes", "--package", tarball, "codex-mem", "query", "Smoke memory", "--limit", "1"]);
+  run("npx", ["--yes", "--package", tarball, "codex-memory", "remember", "--type", "fact", "--title", "Smoke memory", "--context", "npx install smoke wrote this memory."]);
+  const queryOutput = runCapture("npx", ["--yes", "--package", tarball, "codex-memory", "query", "Smoke memory", "--limit", "1"]);
   assert(queryOutput.includes("Smoke memory"), "query did not return smoke memory");
-  const activeHook = runCapture("npx", ["--yes", "--package", tarball, "codex-mem", "hook", "user-prompt"], JSON.stringify({ prompt: "Smoke memory" }));
+  const activeHook = runCapture("npx", ["--yes", "--package", tarball, "codex-memory", "hook", "user-prompt"], JSON.stringify({ prompt: "Smoke memory" }));
   assert(activeHook.includes("hookSpecificOutput") || activeHook.includes("memory"), "active hook did not produce hook output");
 
   const mcpServer = join(tempHome, "runtime", "mcp-server", "dist", "server.js");
@@ -100,9 +100,9 @@ try {
   const tools = messages.at(-1)?.result?.tools ?? [];
   assert(tools.some((tool) => tool.name === "query_memory"), "MCP tools list did not include query_memory");
 
-  run("npx", ["--yes", "--package", tarball, "codex-mem", "status"]);
-  run("npx", ["--yes", "--package", tarball, "codex-mem", "stop"]);
-  const degradedHook = runCapture("npx", ["--yes", "--package", tarball, "codex-mem", "hook", "user-prompt"], JSON.stringify({ prompt: "Smoke memory after stop" }));
+  run("npx", ["--yes", "--package", tarball, "codex-memory", "status"]);
+  run("npx", ["--yes", "--package", tarball, "codex-memory", "stop"]);
+  const degradedHook = runCapture("npx", ["--yes", "--package", tarball, "codex-memory", "hook", "user-prompt"], JSON.stringify({ prompt: "Smoke memory after stop" }));
   assert(degradedHook.includes("degraded") || degradedHook.includes("unavailable"), "offline hook did not report degraded mode");
 } finally {
   const pidPath = join(tempHome, "worker.pid");

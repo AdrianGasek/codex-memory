@@ -85,8 +85,8 @@ describe("installCommand", () => {
       expect(existsSync(join(runtimeHome, "runtime", "mcp-server", "dist", "server.js"))).toBe(true);
       expect(existsSync(join(runtimeHome, "runtime", "plugin", "scripts", "hook_memory.py"))).toBe(true);
       const mcp = JSON.parse(readFileSync(join(runtimeHome, "runtime", "plugin", ".mcp.json"), "utf8"));
-      expect(mcp.mcpServers["codex-mem"].env.CODEX_MEM_API_URL).toBe("http://127.0.0.1:8000");
-      expect(mcp.mcpServers["codex-mem"].args[0]).toContain(join("runtime", "mcp-server", "dist", "server.js"));
+      expect(mcp.mcpServers["codex-memory"].env.CODEX_MEM_API_URL).toBe("http://127.0.0.1:8000");
+      expect(mcp.mcpServers["codex-memory"].args[0]).toContain(join("runtime", "mcp-server", "dist", "server.js"));
       expect(existsSync(join(repo, "runtime"))).toBe(false);
       const marketplace = JSON.parse(readFileSync(join(repo, ".agents", "plugins", "marketplace.json"), "utf8"));
       expect(marketplace.plugins[0].source.path).toBe(join(runtimeHome, "runtime", "plugin"));

@@ -8,7 +8,7 @@ const requiredPaths = ["apps/api/pyproject.toml", "apps/cli/package.json", "apps
 export function devCommand(args: string[]): void {
   const [subcommand] = args;
   if (subcommand !== "doctor") {
-    throw new Error("Unknown dev command. Use codex-mem dev doctor.");
+    throw new Error("Unknown dev command. Use codex-memory dev doctor.");
   }
   devDoctor(process.cwd());
 }

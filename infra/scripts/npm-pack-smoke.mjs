@@ -4,7 +4,7 @@ import { join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 
 const repoRoot = resolve(import.meta.dirname, "../..");
-const tarball = resolve(repoRoot, process.argv[2] ?? "dist/release/codex-mem-0.1.0.tgz");
+const tarball = resolve(repoRoot, process.argv[2] ?? "dist/release/codex-memory-0.1.0.tgz");
 const tempDir = mkdtempSync(join(tmpdir(), "codex-mem-pack-smoke-"));
 
 function run(command, args, options = {}) {
@@ -27,7 +27,7 @@ function run(command, args, options = {}) {
 try {
   run("npm", ["init", "-y"], { stdio: "ignore" });
   run("npm", ["install", tarball, "--ignore-scripts"]);
-  run("npx", ["codex-mem", "--version"]);
+  run("npx", ["codex-memory", "--version"]);
 } finally {
   rmSync(tempDir, { recursive: true, force: true });
 }

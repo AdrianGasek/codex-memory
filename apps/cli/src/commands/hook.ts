@@ -7,7 +7,7 @@ import { userRuntimeDir } from "./runtime.js";
 export function hookCommand(args: string[]): void {
   const [event] = args;
   if (!event) {
-    throw new Error("Missing hook event. Use codex-mem hook <event>.");
+    throw new Error("Missing hook event. Use codex-memory hook <event>.");
   }
 
   const script = hookScriptPath();
@@ -33,5 +33,5 @@ function hookScriptPath(): string {
   if (existsSync(dev)) {
     return dev;
   }
-  throw new Error("Codex-Mem hook runner was not found. Run codex-mem install first.");
+  throw new Error("Codex-Mem hook runner was not found. Run codex-memory install first.");
 }

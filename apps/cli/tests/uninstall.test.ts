@@ -11,7 +11,7 @@ afterEach(() => {
 });
 
 describe("uninstallCommand", () => {
-  test("removes codex-mem from marketplace and writes a backup", () => {
+  test("removes codex-memory from marketplace and writes a backup", () => {
     const repo = mkdtempSync(join(tmpdir(), "codex-mem-uninstall-"));
     const logs: string[] = [];
     try {
@@ -20,7 +20,7 @@ describe("uninstallCommand", () => {
       const marketplacePath = join(repo, ".agents", "plugins", "marketplace.json");
       writeFileSync(
         marketplacePath,
-        JSON.stringify({ plugins: [{ name: "codex-mem" }, { name: "other" }] }, null, 2),
+        JSON.stringify({ plugins: [{ name: "codex-memory" }, { name: "other" }] }, null, 2),
         "utf8",
       );
       console.log = mock((message: string) => logs.push(message)) as unknown as typeof console.log;

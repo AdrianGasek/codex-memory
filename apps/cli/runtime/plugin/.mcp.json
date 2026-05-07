@@ -1,6 +1,6 @@
 {
   "mcpServers": {
-    "codex-mem": {
+    "codex-memory": {
       "command": "bun",
       "args": ["run", "apps/mcp-server/src/server.ts"],
       "env": {

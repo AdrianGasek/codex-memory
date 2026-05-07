@@ -1,5 +1,5 @@
 {
-  "name": "codex-mem",
+  "name": "codex-memory",
   "version": "0.1.0",
   "description": "Persistent project memory for Codex agents.",
   "author": {
@@ -20,7 +20,7 @@
   "hooks": "./hooks.json",
   "mcpServers": "./.mcp.json",
   "interface": {
-    "displayName": "Codex-Mem",
+    "displayName": "Codex-Memory",
     "shortDescription": "Persistent memory for Codex workspaces.",
     "longDescription": "Codex-Mem stores durable project knowledge, exposes it through MCP tools, and injects relevant memory into future Codex sessions.",
     "developerName": "Codex-Mem",

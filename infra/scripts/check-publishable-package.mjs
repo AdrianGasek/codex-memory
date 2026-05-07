@@ -14,8 +14,13 @@ if (!manifest.name || !manifest.version) {
   process.exit(1);
 }
 
-if (manifest.name === "codex-mem" && process.env.CODEX_MEM_NPM_OWNERSHIP_CONFIRMED !== "true") {
-  console.error("Set CODEX_MEM_NPM_OWNERSHIP_CONFIRMED=true only after confirming npm ownership for codex-mem.");
+if (manifest.name === "codex-mem") {
+  console.error("The npm package name codex-mem is already taken. Use codex-memory for the public CLI package.");
+  process.exit(1);
+}
+
+if (manifest.name === "codex-memory" && process.env.CODEX_MEMORY_NPM_AVAILABILITY_CONFIRMED !== "true") {
+  console.error("Set CODEX_MEMORY_NPM_AVAILABILITY_CONFIRMED=true only after confirming npm availability for codex-memory.");
   process.exit(1);
 }
 

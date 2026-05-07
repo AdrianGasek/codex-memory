@@ -179,7 +179,7 @@ export function writeMcpConfig(runtimeDir: string, bunCommand: string, apiUrl: s
   const mcpPath = join(runtimeDir, "runtime", "plugin", ".mcp.json");
   const config = {
     mcpServers: {
-      "codex-mem": {
+      "codex-memory": {
         command: bunCommand,
         args: [join(runtimeDir, "runtime", "mcp-server", "dist", "server.js")],
         env: {
@@ -196,7 +196,7 @@ export function updateMarketplace(repoRoot: string, pluginPath: string): void {
   mkdirSync(dirname(marketplacePath), { recursive: true });
   const marketplace = readMarketplace(marketplacePath);
   const plugin = {
-    name: "codex-mem",
+    name: "codex-memory",
     source: {
       source: "local",
       path: pluginPath,
@@ -208,15 +208,15 @@ export function updateMarketplace(repoRoot: string, pluginPath: string): void {
     category: "Productivity",
   };
   const plugins = Array.isArray(marketplace.plugins) ? marketplace.plugins : [];
-  const index = plugins.findIndex((entry) => entry && typeof entry === "object" && "name" in entry && entry.name === "codex-mem");
+  const index = plugins.findIndex((entry) => entry && typeof entry === "object" && "name" in entry && ["codex-memory", "codex-mem"].includes(String(entry.name)));
   if (index >= 0) {
     plugins[index] = plugin;
   } else {
     plugins.push(plugin);
   }
   marketplace.plugins = plugins;
-  marketplace.name = marketplace.name ?? "codex-mem-local";
-  marketplace.interface = marketplace.interface ?? { displayName: "Codex-Mem Local" };
+  marketplace.name = marketplace.name ?? "codex-memory-local";
+  marketplace.interface = marketplace.interface ?? { displayName: "Codex-Memory Local" };
   writeFileSync(marketplacePath, `${JSON.stringify(marketplace, null, 2)}\n`, "utf8");
 }
 

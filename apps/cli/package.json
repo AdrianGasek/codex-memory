@@ -1,11 +1,11 @@
 {
-  "name": "codex-mem",
+  "name": "codex-memory",
   "version": "0.1.0",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "bin": {
-    "codex-mem": "./dist/index.js"
+    "codex-memory": "./dist/index.js"
   },
   "files": [
     "dist",

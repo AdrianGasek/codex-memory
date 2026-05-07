@@ -1,11 +1,11 @@
 {
-  "name": "@codex-mem/mcp-server",
+  "name": "@codex-memory/mcp-server",
   "version": "0.1.0",
   "type": "module",
   "main": "./dist/server.js",
   "types": "./dist/server.d.ts",
   "bin": {
-    "codex-mem-mcp": "./dist/server.js"
+    "codex-memory-mcp": "./dist/server.js"
   },
   "files": [
     "dist"
