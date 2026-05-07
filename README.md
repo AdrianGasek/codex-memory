@@ -197,9 +197,26 @@ bun run api:test
 bun run pack:smoke
 ```
 
+## Publishing To npm
+
+This repository is a monorepo. The root `package.json` is private and exists for development tasks, workspaces, and shared build scripts. It is not the npm package users install.
+
+The public npm package is `apps/cli/package.json`, which publishes the `codex-memory` CLI plus the staged runtime files needed by installed projects.
+
+Publish from the CLI package directory:
+
+```bash
+cd apps/cli
+npm pack --dry-run
+npm publish --access public
+```
+
+Before publishing, confirm the dry run includes `README.md`, `dist`, `runtime`, `LICENSE`, and `package.json`.
+
 ## Troubleshooting
 
 - `npx` fails on Windows PowerShell: try `npx.cmd codex-memory install`.
+- `npm i codex-memory` fails inside this source checkout: use `bun install` for repo development, or run `npx codex-memory install` from the target project. npm may otherwise resolve the local workspace package instead of the registry package.
 - API is offline: run `codex-memory doctor`, then `codex-memory restart`.
 - Port `8000` is busy: the installer reuses a healthy API or selects another local port.
 - MCP tools fail: check `codex-memory doctor` and confirm `CODEX_MEM_API_URL`.

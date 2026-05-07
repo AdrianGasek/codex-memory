@@ -37,3 +37,17 @@ codex-memory uninstall
 ## Data
 
 Memory is local-first and stored under `~/.codex-mem` by default. Do not store secrets, tokens, credentials, or private personal data as memory.
+
+## Package Publishing
+
+The GitHub repository is a monorepo. The root `package.json` is private and is used for development, workspaces, and shared scripts.
+
+The npm package users install is published from `apps/cli`, because that directory contains the `codex-memory` CLI manifest, built `dist` files, runtime assets, license, and this README.
+
+```bash
+cd apps/cli
+npm pack --dry-run
+npm publish --access public
+```
+
+The dry run should list `README.md` before publishing.
