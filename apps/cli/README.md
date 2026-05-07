@@ -1,3 +1,15 @@
+<p align="center">
+  <img src="https://raw.githubusercontent.com/AdrianGasek/codex-memory/main/logo.png" alt="Codex-Mem logo" width="160">
+</p>
+
+<p align="center">
+  <a href="https://www.npmjs.com/package/codex-memory"><img src="https://img.shields.io/npm/v/codex-memory?style=flat-square&label=npm" alt="npm version"></a>
+  <a href="https://www.npmjs.com/package/codex-memory"><img src="https://img.shields.io/npm/dw/codex-memory?style=flat-square&label=downloads" alt="npm weekly downloads"></a>
+  <a href="https://www.npmjs.com/package/codex-memory"><img src="https://img.shields.io/npm/l/codex-memory?style=flat-square" alt="license"></a>
+  <img src="https://img.shields.io/node/v/codex-memory?style=flat-square" alt="node version">
+  <img src="https://img.shields.io/npm/types/codex-memory?style=flat-square" alt="TypeScript types">
+</p>
+
 # codex-memory
 
 Local persistent memory for Codex agents.
