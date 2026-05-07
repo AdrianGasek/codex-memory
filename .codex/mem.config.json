@@ -1,0 +1,50 @@
+{
+  "project": "codex-brain",
+  "inject_limit": 5,
+  "token_budget": 1200,
+  "vector_backend": "local",
+  "vector": {
+    "allow_local_fallback": false,
+    "chroma_collection": "codex_mem",
+    "chroma_timeout_seconds": 5
+  },
+  "embeddings": {
+    "provider": "local",
+    "model": "local-hash"
+  },
+  "summarization": {
+    "provider": "local",
+    "model": "extractive"
+  },
+  "capture": {
+    "mode": "active",
+    "sensitivity": "standard",
+    "ignore_paths": ["data/db", "data/vectors", "node_modules", "dist", "logs", "*.log", "vendor"],
+    "no_store_tags": ["private", "no-store"],
+    "no_store_paths": ["secrets", "private", "*.pem", "*.key"]
+  },
+  "debug": {
+    "verbose": false,
+    "capture_log_enabled": false,
+    "capture_log": ".codex/CAPTURE_DEBUG.jsonl"
+  },
+  "sync": {
+    "enabled": false,
+    "scope": "local"
+  },
+  "shared": {
+    "write_enabled": false
+  },
+  "migration": {
+    "allow_external_paths": false
+  },
+  "security": {
+    "db_encryption_enabled": false
+  },
+  "team": {
+    "id": "default",
+    "role": "reader",
+    "write_enabled": false,
+    "backend": "local"
+  }
+}

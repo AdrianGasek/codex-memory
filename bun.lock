@@ -11,7 +11,7 @@
     },
     "apps/cli": {
       "name": "codex-memory",
-      "version": "0.1.0",
+      "version": "1.0.4",
       "bin": {
         "codex-memory": "./dist/index.js",
       },

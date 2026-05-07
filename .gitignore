@@ -1,5 +1,8 @@
 # Runtime data
-.codex/
+.codex/*
+!.codex/
+!.codex/ROADMAP.md
+!.codex/mem.config.json
 data/db/*
 data/vectors/*
 !data/db/.gitkeep
