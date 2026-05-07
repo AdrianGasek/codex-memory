@@ -1,4 +1,4 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node
 import { readFileSync } from "node:fs";
 import { debugCommand } from "./commands/debug.js";
 import { devCommand } from "./commands/dev.js";
