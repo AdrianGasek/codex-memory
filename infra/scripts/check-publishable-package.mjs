@@ -24,4 +24,12 @@ if (manifest.name === "codex-memory" && process.env.CODEX_MEMORY_NPM_AVAILABILIT
   process.exit(1);
 }
 
+const dependencySections = ["dependencies", "devDependencies", "peerDependencies", "optionalDependencies"];
+for (const section of dependencySections) {
+  if (manifest[section]?.[manifest.name]) {
+    console.error(`${manifest.name} must not list itself in ${section}. Run install tests from a temporary consumer project instead.`);
+    process.exit(1);
+  }
+}
+
 console.log(`${manifest.name}@${manifest.version} is publishable.`);

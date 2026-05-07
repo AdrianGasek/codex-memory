@@ -216,7 +216,7 @@ Before publishing, confirm the dry run includes `README.md`, `dist`, `runtime`, 
 ## Troubleshooting
 
 - `npx` fails on Windows PowerShell: try `npx.cmd codex-memory install`.
-- `npm i codex-memory` fails inside this source checkout: use `bun install` for repo development, or run `npx codex-memory install` from the target project. npm may otherwise resolve the local workspace package instead of the registry package.
+- `npm i codex-memory` fails inside this source checkout: use `bun install` for repo development, or run `npx codex-memory install` from a separate target project. Do not run `npm i codex-memory` from `apps/cli`; that asks npm to install the package into itself.
 - API is offline: run `codex-memory doctor`, then `codex-memory restart`.
 - Port `8000` is busy: the installer reuses a healthy API or selects another local port.
 - MCP tools fail: check `codex-memory doctor` and confirm `CODEX_MEM_API_URL`.
