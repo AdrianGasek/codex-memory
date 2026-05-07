@@ -32,7 +32,7 @@
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "bin": {
-    "codex-memory": "./dist/index.js"
+    "codex-memory": "dist/index.js"
   },
   "files": [
     "dist",

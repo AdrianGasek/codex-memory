@@ -1,7 +1,7 @@
 {
   "name": "codex-memory",
   "version": "1.0.0",
-  "private": true,
+  "private": false,
   "type": "module",
   "description": "Local persistent memory for Codex agents that captures, searches, and reuses project knowledge.",
   "homepage": "https://github.com/AdrianGasek/codex-memory#readme",
