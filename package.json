@@ -1,6 +1,7 @@
 {
   "name": "codex-memory",
-  "version": "1.0.1",
+  "version": "1.0.2",
+  "private": true,
   "type": "module",
   "description": "Local persistent memory for Codex agents that captures, searches, and reuses project knowledge.",
   "homepage": "https://github.com/AdrianGasek/codex-memory#readme",
@@ -48,6 +49,7 @@
     "smoke:npx-install": "bun run pack:cli && node infra/scripts/smoke-npx-install.mjs",
     "release:check": "node infra/scripts/check-publishable-package.mjs apps/cli/package.json",
     "release:check:confirmed": "node infra/scripts/check-publishable-confirmed.mjs apps/cli/package.json",
+    "prepublishOnly": "node infra/scripts/refuse-root-publish.mjs",
     "typecheck": "tsc -p apps/cli/tsconfig.json --noEmit && tsc -p apps/mcp-server/tsconfig.json --noEmit",
     "api:test": "uv run --project apps/api pytest apps/api/tests",
     "api:dev": "uv run --project apps/api uvicorn app.main:app --reload --host 127.0.0.1 --port 8000",
