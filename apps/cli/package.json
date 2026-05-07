@@ -1,0 +1,54 @@
+{
+  "name": "codex-memory",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Local persistent memory for Codex agents that captures, searches, and reuses project knowledge.",
+  "homepage": "https://github.com/AdrianGasek/codex-memory#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/AdrianGasek/codex-memory.git",
+    "directory": "apps/cli"
+  },
+  "bugs": {
+    "url": "https://github.com/AdrianGasek/codex-memory/issues"
+  },
+  "keywords": [
+    "codex",
+    "codex-memory",
+    "ai-agent",
+    "agent-memory",
+    "persistent-memory",
+    "mcp",
+    "mcp-server",
+    "codex-plugin",
+    "developer-tools",
+    "local-first",
+    "sqlite",
+    "cli",
+    "typescript"
+  ],
+  "author": "AdrianGasek",
+  "license": "MIT",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "bin": {
+    "codex-memory": "dist/index.js"
+  },
+  "files": [
+    "dist",
+    "runtime"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "dev": "bun run src/index.ts",
+    "prepublishOnly": "node ../../infra/scripts/check-publishable-package.mjs package.json",
+    "test": "bun test tests"
+  }
+}

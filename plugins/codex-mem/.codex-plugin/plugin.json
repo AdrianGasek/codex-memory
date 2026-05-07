@@ -1,0 +1,43 @@
+{
+  "name": "codex-memory",
+  "version": "0.1.0",
+  "description": "Persistent project memory for Codex agents.",
+  "author": {
+    "name": "Codex-Mem",
+    "email": "codex-mem@example.local",
+    "url": "https://developers.openai.com/codex"
+  },
+  "homepage": "https://developers.openai.com/codex",
+  "repository": "https://github.com/local/codex-mem",
+  "license": "MIT",
+  "keywords": [
+    "codex",
+    "memory",
+    "mcp",
+    "agent"
+  ],
+  "skills": "./skills/",
+  "hooks": "./hooks.json",
+  "mcpServers": "./.mcp.json",
+  "interface": {
+    "displayName": "Codex-Memory",
+    "shortDescription": "Persistent memory for Codex workspaces.",
+    "longDescription": "Codex-Mem stores durable project knowledge, exposes it through MCP tools, and injects relevant memory into future Codex sessions.",
+    "developerName": "Codex-Mem",
+    "category": "Productivity",
+    "capabilities": [
+      "Memory",
+      "MCP",
+      "Hooks"
+    ],
+    "websiteURL": "https://developers.openai.com/codex",
+    "privacyPolicyURL": "https://openai.com/policies/row-privacy-policy/",
+    "termsOfServiceURL": "https://openai.com/policies/row-terms-of-use/",
+    "defaultPrompt": [
+      "Search memory for this task.",
+      "Remember this project decision.",
+      "Show injected memory context."
+    ],
+    "brandColor": "#3B82F6"
+  }
+}
