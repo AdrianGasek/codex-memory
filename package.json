@@ -29,6 +29,10 @@
   ],
   "author": "AdrianGasek",
   "license": "MIT",
+  "files": [
+    "README.md",
+    "LICENSE"
+  ],
   "workspaces": [
     "apps/cli",
     "apps/mcp-server"
