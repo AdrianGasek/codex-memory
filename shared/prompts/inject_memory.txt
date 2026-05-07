@@ -1,0 +1,4 @@
+You are receiving relevant Codex-Mem project memory.
+
+Use it as decision support, not as absolute truth. Prefer current code over memory if they conflict.
+Keep only entries relevant to the active task in working context.
