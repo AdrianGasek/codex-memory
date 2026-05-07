@@ -1,0 +1,53 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "codex-memory hook session-start",
+            "timeout": 5,
+            "statusMessage": "Loading Codex-Mem context"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "codex-memory hook user-prompt",
+            "timeout": 5,
+            "statusMessage": "Retrieving Codex-Mem context"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "codex-memory hook stop",
+            "timeout": 5,
+            "statusMessage": "Codex-Mem capture pass"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "codex-memory hook post-tool-use",
+            "timeout": 5,
+            "statusMessage": "Codex-Mem tool-result capture"
+          }
+        ]
+      }
+    ]
+  }
+}
