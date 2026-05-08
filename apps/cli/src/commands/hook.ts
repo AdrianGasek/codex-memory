@@ -25,13 +25,28 @@ export function hookCommand(args: string[]): void {
 }
 
 function hookScriptPath(): string {
-  const installed = join(userRuntimeDir(), "runtime", "plugin", "scripts", "hook_memory.py");
+  const installed = join(
+    userRuntimeDir(),
+    "runtime",
+    "plugin",
+    "scripts",
+    "hook_memory.py",
+  );
   if (existsSync(installed)) {
     return installed;
   }
-  const dev = resolve(fileURLToPath(new URL("../../../../plugins/codex-mem/scripts/hook_memory.py", import.meta.url)));
+  const dev = resolve(
+    fileURLToPath(
+      new URL(
+        "../../../../plugins/codex-mem/scripts/hook_memory.py",
+        import.meta.url,
+      ),
+    ),
+  );
   if (existsSync(dev)) {
     return dev;
   }
-  throw new Error("Codex-Mem hook runner was not found. Run codex-memory install first.");
+  throw new Error(
+    "Codex-Mem hook runner was not found. Run codex-memory install first.",
+  );
 }

@@ -11,7 +11,10 @@ describe("runtime bootstrap", () => {
       calls.push({ command, args });
       return {
         status: 0,
-        stdout: command === "where.exe" && args[0] === "bun" ? "C:\\bin\\bun.exe\n" : "C:\\bin\\uv.exe\n",
+        stdout:
+          command === "where.exe" && args[0] === "bun"
+            ? "C:\\bin\\bun.exe\n"
+            : "C:\\bin\\uv.exe\n",
       };
     }) as never;
 
@@ -26,13 +29,17 @@ describe("runtime bootstrap", () => {
     const runtimeDir = mkdtempSync(join(tmpdir(), "codex-mem-runtime-"));
     try {
       const runner = (() => ({ status: 1, stdout: "" })) as never;
-      expect(() => ensureToolchain({ runtimeDir, runner })).toThrow("npm was not found");
+      expect(() => ensureToolchain({ runtimeDir, runner })).toThrow(
+        "npm was not found",
+      );
     } finally {
       rmSync(runtimeDir, { recursive: true, force: true });
     }
   });
 
   test("uses CODEX_MEM_HOME as the runtime directory override", () => {
-    expect(userRuntimeDir({ CODEX_MEM_HOME: "C:\\codex-mem-test" })).toBe("C:\\codex-mem-test");
+    expect(userRuntimeDir({ CODEX_MEM_HOME: "C:\\codex-mem-test" })).toBe(
+      "C:\\codex-mem-test",
+    );
   });
 });

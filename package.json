@@ -50,6 +50,8 @@
     "release:check": "node infra/scripts/check-publishable-package.mjs apps/cli/package.json",
     "release:check:confirmed": "node infra/scripts/check-publishable-confirmed.mjs apps/cli/package.json",
     "prepublishOnly": "node infra/scripts/refuse-root-publish.mjs",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
     "typecheck": "tsc -p apps/cli/tsconfig.json --noEmit && tsc -p apps/mcp-server/tsconfig.json --noEmit",
     "api:test": "uv run --project apps/api pytest apps/api/tests",
     "api:dev": "uv run --project apps/api uvicorn app.main:app --reload --host 127.0.0.1 --port 8000",
@@ -58,6 +60,7 @@
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
+    "prettier": "^3.6.2",
     "typescript": "^5.9.3"
   }
 }

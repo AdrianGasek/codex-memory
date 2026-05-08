@@ -16,6 +16,6 @@ describe("version command", () => {
 
     await runCommand("--version", []);
 
-    expect(logs).toEqual(["0.1.0"]);
+    expect(logs).toEqual(["1.0.5"]);
   });
 });

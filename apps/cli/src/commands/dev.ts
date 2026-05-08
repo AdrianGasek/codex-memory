@@ -3,7 +3,12 @@ import { join } from "node:path";
 import { findRepoRoot } from "./install.js";
 
 const requiredScripts = ["api:dev", "mcp:dev", "cli:test", "api:test"];
-const requiredPaths = ["apps/api/pyproject.toml", "apps/cli/package.json", "apps/mcp-server/package.json", "plugins/codex-mem/.codex-plugin/plugin.json"];
+const requiredPaths = [
+  "apps/api/pyproject.toml",
+  "apps/cli/package.json",
+  "apps/mcp-server/package.json",
+  "plugins/codex-mem/.codex-plugin/plugin.json",
+];
 
 export function devCommand(args: string[]): void {
   const [subcommand] = args;
@@ -15,9 +20,15 @@ export function devCommand(args: string[]): void {
 
 export function devDoctor(cwd: string): void {
   const repoRoot = findRepoRoot(cwd);
-  const manifest = JSON.parse(readFileSync(join(repoRoot, "package.json"), "utf8")) as { scripts?: Record<string, string> };
-  const missingScripts = requiredScripts.filter((script) => !manifest.scripts?.[script]);
-  const missingPaths = requiredPaths.filter((path) => !existsSync(join(repoRoot, path)));
+  const manifest = JSON.parse(
+    readFileSync(join(repoRoot, "package.json"), "utf8"),
+  ) as { scripts?: Record<string, string> };
+  const missingScripts = requiredScripts.filter(
+    (script) => !manifest.scripts?.[script],
+  );
+  const missingPaths = requiredPaths.filter(
+    (path) => !existsSync(join(repoRoot, path)),
+  );
 
   if (missingScripts.length || missingPaths.length) {
     for (const script of missingScripts) {

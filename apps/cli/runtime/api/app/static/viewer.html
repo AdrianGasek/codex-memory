@@ -1,46 +1,56 @@
 <!doctype html>
 <html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Codex-Mem Viewer</title>
-  <link rel="stylesheet" href="/memory/viewer/assets/viewer.css">
-</head>
-<body>
-  <header>
-    <h1>Codex-Mem Viewer</h1>
-    <span id="status" class="meta">Loading</span>
-  </header>
-  <main>
-    <section>
-      <form id="search-form">
-        <input id="query" name="query" placeholder="Search memory" autocomplete="off">
-        <select id="type" name="type" aria-label="Type">
-          <option value="">All types</option>
-          <option value="fact">Fact</option>
-          <option value="decision">Decision</option>
-          <option value="bug">Bug</option>
-          <option value="solution">Solution</option>
-          <option value="pattern">Pattern</option>
-        </select>
-        <input id="project" name="project" placeholder="Project" autocomplete="off">
-        <input id="tags" name="tags" placeholder="Tags" autocomplete="off">
-        <button type="submit">Search</button>
-      </form>
-      <p class="meta" id="result-count"></p>
-      <div class="list" id="results"></div>
-      <h2>Ranking Debug</h2>
-      <div id="debug-panel" class="debug"></div>
-    </section>
-    <aside>
-      <h2>Memory Stream</h2>
-      <div id="stream"></div>
-      <h2>Health</h2>
-      <div id="health"></div>
-      <h2>Selected Entry</h2>
-      <div id="selected-entry" class="detail"></div>
-    </aside>
-  </main>
-  <script src="/memory/viewer/assets/viewer.js"></script>
-</body>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Codex-Mem Viewer</title>
+    <link rel="stylesheet" href="/memory/viewer/assets/viewer.css" />
+  </head>
+  <body>
+    <header>
+      <h1>Codex-Mem Viewer</h1>
+      <span id="status" class="meta">Loading</span>
+    </header>
+    <main>
+      <section>
+        <form id="search-form">
+          <input
+            id="query"
+            name="query"
+            placeholder="Search memory"
+            autocomplete="off"
+          />
+          <select id="type" name="type" aria-label="Type">
+            <option value="">All types</option>
+            <option value="fact">Fact</option>
+            <option value="decision">Decision</option>
+            <option value="bug">Bug</option>
+            <option value="solution">Solution</option>
+            <option value="pattern">Pattern</option>
+          </select>
+          <input
+            id="project"
+            name="project"
+            placeholder="Project"
+            autocomplete="off"
+          />
+          <input id="tags" name="tags" placeholder="Tags" autocomplete="off" />
+          <button type="submit">Search</button>
+        </form>
+        <p class="meta" id="result-count"></p>
+        <div class="list" id="results"></div>
+        <h2>Ranking Debug</h2>
+        <div id="debug-panel" class="debug"></div>
+      </section>
+      <aside>
+        <h2>Memory Stream</h2>
+        <div id="stream"></div>
+        <h2>Health</h2>
+        <div id="health"></div>
+        <h2>Selected Entry</h2>
+        <div id="selected-entry" class="detail"></div>
+      </aside>
+    </main>
+    <script src="/memory/viewer/assets/viewer.js"></script>
+  </body>
 </html>

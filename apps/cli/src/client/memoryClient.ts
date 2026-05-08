@@ -47,7 +47,9 @@ export interface ConfigDiagnostics {
 export class MemoryClient {
   private readonly apiUrl: string;
 
-  constructor(apiUrl = process.env.CODEX_MEM_API_URL ?? "http://127.0.0.1:8000") {
+  constructor(
+    apiUrl = process.env.CODEX_MEM_API_URL ?? "http://127.0.0.1:8000",
+  ) {
     this.apiUrl = apiUrl.replace(/\/$/, "");
   }
 
@@ -91,15 +93,23 @@ export class MemoryClient {
     if (after) params.set("after", after);
     if (before) params.set("before", before);
     if (profile) params.set("profile", profile);
-    const response = await this.request<{ results: SearchResult[] }>(`/memory/search?${params}`);
+    const response = await this.request<{ results: SearchResult[] }>(
+      `/memory/search?${params}`,
+    );
     return response.results;
   }
 
-  async inject(query: string, limit?: number, profile?: RetrievalProfile): Promise<string> {
+  async inject(
+    query: string,
+    limit?: number,
+    profile?: RetrievalProfile,
+  ): Promise<string> {
     const params = new URLSearchParams({ query });
     if (limit) params.set("limit", String(limit));
     if (profile) params.set("profile", profile);
-    const response = await this.request<{ additional_context: string }>(`/memory/inject?${params}`);
+    const response = await this.request<{ additional_context: string }>(
+      `/memory/inject?${params}`,
+    );
     return response.additional_context;
   }
 

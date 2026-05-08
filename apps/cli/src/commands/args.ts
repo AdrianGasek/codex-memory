@@ -23,11 +23,18 @@ export function parseOptions(args: string[]): Map<string, string[]> {
   return options;
 }
 
-export function option(options: Map<string, string[]>, name: string, fallback = ""): string {
+export function option(
+  options: Map<string, string[]>,
+  name: string,
+  fallback = "",
+): string {
   return options.get(name)?.join(" ").trim() || fallback;
 }
 
-export function optionList(options: Map<string, string[]>, name: string): string[] {
+export function optionList(
+  options: Map<string, string[]>,
+  name: string,
+): string[] {
   return (options.get(name) ?? [])
     .flatMap((value) => value.split(","))
     .map((value) => value.trim())

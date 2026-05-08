@@ -1,5 +1,12 @@
 import { afterEach, describe, expect, mock, test } from "bun:test";
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync, mkdirSync } from "node:fs";
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+  mkdirSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { uninstallCommand } from "../src/commands/uninstall";
@@ -15,15 +22,26 @@ describe("uninstallCommand", () => {
     const repo = mkdtempSync(join(tmpdir(), "codex-mem-uninstall-"));
     const logs: string[] = [];
     try {
-      writeFileSync(join(repo, "package.json"), "{\"name\":\"demo\"}\n", "utf8");
+      writeFileSync(join(repo, "package.json"), '{"name":"demo"}\n', "utf8");
       mkdirSync(join(repo, ".agents", "plugins"), { recursive: true });
-      const marketplacePath = join(repo, ".agents", "plugins", "marketplace.json");
+      const marketplacePath = join(
+        repo,
+        ".agents",
+        "plugins",
+        "marketplace.json",
+      );
       writeFileSync(
         marketplacePath,
-        JSON.stringify({ plugins: [{ name: "codex-memory" }, { name: "other" }] }, null, 2),
+        JSON.stringify(
+          { plugins: [{ name: "codex-memory" }, { name: "other" }] },
+          null,
+          2,
+        ),
         "utf8",
       );
-      console.log = mock((message: string) => logs.push(message)) as unknown as typeof console.log;
+      console.log = mock((message: string) =>
+        logs.push(message),
+      ) as unknown as typeof console.log;
 
       uninstallCommand(["--cwd", repo]);
 

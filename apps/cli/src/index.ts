@@ -11,11 +11,19 @@ import { rememberCommand } from "./commands/remember.js";
 import { uninstallCommand } from "./commands/uninstall.js";
 import { updateCommand } from "./commands/update.js";
 import { upgradeCommand } from "./commands/upgrade.js";
-import { restartCommand, startCommand, statusCommand, stopCommand } from "./commands/workerCommands.js";
+import {
+  restartCommand,
+  startCommand,
+  statusCommand,
+  stopCommand,
+} from "./commands/workerCommands.js";
 
 const [, , command, ...args] = process.argv;
 
-export async function runCommand(command: string | undefined, args: string[]): Promise<void> {
+export async function runCommand(
+  command: string | undefined,
+  args: string[],
+): Promise<void> {
   switch (command) {
     case "--version":
     case "-v":
@@ -106,7 +114,9 @@ Environment:
 }
 
 function printVersion(): void {
-  const packageJson = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
+  const packageJson = JSON.parse(
+    readFileSync(new URL("../package.json", import.meta.url), "utf8"),
+  );
   console.log(String(packageJson.version));
 }
 

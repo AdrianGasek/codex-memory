@@ -19,7 +19,15 @@
   "capture": {
     "mode": "active",
     "sensitivity": "standard",
-    "ignore_paths": ["data/db", "data/vectors", "node_modules", "dist", "logs", "*.log", "vendor"],
+    "ignore_paths": [
+      "data/db",
+      "data/vectors",
+      "node_modules",
+      "dist",
+      "logs",
+      "*.log",
+      "vendor"
+    ],
     "no_store_tags": ["private", "no-store"],
     "no_store_paths": ["secrets", "private", "*.pem", "*.key"]
   },

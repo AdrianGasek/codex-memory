@@ -1,9 +1,29 @@
-import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  cpSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { fileURLToPath } from "node:url";
-import { basename, dirname, isAbsolute, join, parse, relative, resolve } from "node:path";
+import {
+  basename,
+  dirname,
+  isAbsolute,
+  join,
+  parse,
+  relative,
+  resolve,
+} from "node:path";
 import { parseOptions } from "./args.js";
 import { ensureToolchain, userRuntimeDir } from "./runtime.js";
-import { resolveApiEndpoint, startWorker, waitForHealth, writeWorkerState } from "./worker.js";
+import {
+  resolveApiEndpoint,
+  startWorker,
+  waitForHealth,
+  writeWorkerState,
+} from "./worker.js";
 
 interface MemConfig {
   project?: string;
@@ -54,15 +74,22 @@ export async function installCommand(args: string[]): Promise<void> {
   const existing = readExistingConfig(configPath);
   const config = mergeConfig(defaultConfig(repoRoot), existing);
   const runtimeDir = userRuntimeDir();
-  const runtimeSource = resolve(options.get("runtime-source")?.[0] ?? fileURLToPath(new URL("../../runtime", import.meta.url)));
+  const runtimeSource = resolve(
+    options.get("runtime-source")?.[0] ??
+      fileURLToPath(new URL("../../runtime", import.meta.url)),
+  );
   if (options.has("dry-run")) {
-    console.log(`Codex-Mem install dry run: repo=${repoRoot} runtime=${runtimeDir} config=${configPath} source=${runtimeSource}`);
+    console.log(
+      `Codex-Mem install dry run: repo=${repoRoot} runtime=${runtimeDir} config=${configPath} source=${runtimeSource}`,
+    );
     return;
   }
 
   mkdirSync(codexDir, { recursive: true });
   mkdirSync(runtimeDir, { recursive: true });
-  const toolchain = options.has("skip-bootstrap") ? { bun: "bun", uv: "uv" } : ensureToolchain({ runtimeDir });
+  const toolchain = options.has("skip-bootstrap")
+    ? { bun: "bun", uv: "uv" }
+    : ensureToolchain({ runtimeDir });
   const marketplaceBackup = backupMarketplace(repoRoot);
   installRuntimeAssets(runtimeSource, join(runtimeDir, "runtime"));
   migrateDevToolkitData(repoRoot, runtimeDir);
@@ -72,9 +99,21 @@ export async function installCommand(args: string[]): Promise<void> {
     apiUrl = endpoint.apiUrl;
     config.api = { url: endpoint.apiUrl, port: endpoint.port };
     if (endpoint.reuseExisting) {
-      writeWorkerState(runtimeDir, { pid: 0, port: endpoint.port, apiUrl: endpoint.apiUrl, logsDir: join(runtimeDir, "logs"), external: true });
+      writeWorkerState(runtimeDir, {
+        pid: 0,
+        port: endpoint.port,
+        apiUrl: endpoint.apiUrl,
+        logsDir: join(runtimeDir, "logs"),
+        external: true,
+      });
     } else {
-      startWorker({ runtimeDir, repoRoot, toolchain, apiUrl: endpoint.apiUrl, port: endpoint.port });
+      startWorker({
+        runtimeDir,
+        repoRoot,
+        toolchain,
+        apiUrl: endpoint.apiUrl,
+        port: endpoint.port,
+      });
     }
     await waitForHealth(endpoint.apiUrl);
   }
@@ -88,7 +127,9 @@ export async function installCommand(args: string[]): Promise<void> {
   }
   writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`, "utf8");
 
-  console.log(`Codex-Mem config: ${relative(process.cwd(), configPath) || configPath}`);
+  console.log(
+    `Codex-Mem config: ${relative(process.cwd(), configPath) || configPath}`,
+  );
 }
 
 export function findRepoRoot(start: string): string {
@@ -96,7 +137,10 @@ export function findRepoRoot(start: string): string {
   const root = parse(current).root;
 
   while (true) {
-    if (existsSync(join(current, ".git")) || existsSync(join(current, "package.json"))) {
+    if (
+      existsSync(join(current, ".git")) ||
+      existsSync(join(current, "package.json"))
+    ) {
       return current;
     }
     if (current === root) {
@@ -149,7 +193,10 @@ function readExistingConfig(path: string): MemConfig {
   return parsed as MemConfig;
 }
 
-function mergeConfig(defaults: Required<MemConfig>, existing: MemConfig): MemConfig {
+function mergeConfig(
+  defaults: Required<MemConfig>,
+  existing: MemConfig,
+): MemConfig {
   return {
     ...defaults,
     ...existing,
@@ -162,20 +209,34 @@ function mergeConfig(defaults: Required<MemConfig>, existing: MemConfig): MemCon
   };
 }
 
-export function resolveConfigPath(repoRoot: string, configuredPath: string): string {
-  return isAbsolute(configuredPath) ? configuredPath : join(repoRoot, configuredPath);
+export function resolveConfigPath(
+  repoRoot: string,
+  configuredPath: string,
+): string {
+  return isAbsolute(configuredPath)
+    ? configuredPath
+    : join(repoRoot, configuredPath);
 }
 
-export function installRuntimeAssets(sourceDir: string, targetDir: string): void {
+export function installRuntimeAssets(
+  sourceDir: string,
+  targetDir: string,
+): void {
   if (!existsSync(sourceDir)) {
-    throw new Error(`Codex-Mem runtime assets were not found at ${sourceDir}. Run the package build before installing.`);
+    throw new Error(
+      `Codex-Mem runtime assets were not found at ${sourceDir}. Run the package build before installing.`,
+    );
   }
   rmSync(targetDir, { recursive: true, force: true });
   mkdirSync(targetDir, { recursive: true });
   cpSync(sourceDir, targetDir, { recursive: true });
 }
 
-export function writeMcpConfig(runtimeDir: string, bunCommand: string, apiUrl: string): void {
+export function writeMcpConfig(
+  runtimeDir: string,
+  bunCommand: string,
+  apiUrl: string,
+): void {
   const mcpPath = join(runtimeDir, "runtime", "plugin", ".mcp.json");
   const config = {
     mcpServers: {
@@ -192,7 +253,12 @@ export function writeMcpConfig(runtimeDir: string, bunCommand: string, apiUrl: s
 }
 
 export function updateMarketplace(repoRoot: string, pluginPath: string): void {
-  const marketplacePath = join(repoRoot, ".agents", "plugins", "marketplace.json");
+  const marketplacePath = join(
+    repoRoot,
+    ".agents",
+    "plugins",
+    "marketplace.json",
+  );
   mkdirSync(dirname(marketplacePath), { recursive: true });
   const marketplace = readMarketplace(marketplacePath);
   const plugin = {
@@ -208,7 +274,13 @@ export function updateMarketplace(repoRoot: string, pluginPath: string): void {
     category: "Productivity",
   };
   const plugins = Array.isArray(marketplace.plugins) ? marketplace.plugins : [];
-  const index = plugins.findIndex((entry) => entry && typeof entry === "object" && "name" in entry && ["codex-memory", "codex-mem"].includes(String(entry.name)));
+  const index = plugins.findIndex(
+    (entry) =>
+      entry &&
+      typeof entry === "object" &&
+      "name" in entry &&
+      ["codex-memory", "codex-mem"].includes(String(entry.name)),
+  );
   if (index >= 0) {
     plugins[index] = plugin;
   } else {
@@ -216,17 +288,38 @@ export function updateMarketplace(repoRoot: string, pluginPath: string): void {
   }
   marketplace.plugins = plugins;
   marketplace.name = marketplace.name ?? "codex-memory-local";
-  marketplace.interface = marketplace.interface ?? { displayName: "Codex-Memory Local" };
-  writeFileSync(marketplacePath, `${JSON.stringify(marketplace, null, 2)}\n`, "utf8");
+  marketplace.interface = marketplace.interface ?? {
+    displayName: "Codex-Memory Local",
+  };
+  writeFileSync(
+    marketplacePath,
+    `${JSON.stringify(marketplace, null, 2)}\n`,
+    "utf8",
+  );
 }
 
 export function backupMarketplace(repoRoot: string): string | null {
-  const marketplacePath = join(repoRoot, ".agents", "plugins", "marketplace.json");
-  return existsSync(marketplacePath) ? readFileSync(marketplacePath, "utf8") : null;
+  const marketplacePath = join(
+    repoRoot,
+    ".agents",
+    "plugins",
+    "marketplace.json",
+  );
+  return existsSync(marketplacePath)
+    ? readFileSync(marketplacePath, "utf8")
+    : null;
 }
 
-export function restoreMarketplace(repoRoot: string, backup: string | null): void {
-  const marketplacePath = join(repoRoot, ".agents", "plugins", "marketplace.json");
+export function restoreMarketplace(
+  repoRoot: string,
+  backup: string | null,
+): void {
+  const marketplacePath = join(
+    repoRoot,
+    ".agents",
+    "plugins",
+    "marketplace.json",
+  );
   if (backup === null) {
     rmSync(marketplacePath, { force: true });
     return;
@@ -245,12 +338,17 @@ export function validatePluginInstall(runtimeDir: string): void {
   ];
   for (const path of required) {
     if (!existsSync(path)) {
-      throw new Error(`Codex-Mem plugin install failed health check: missing ${path}.`);
+      throw new Error(
+        `Codex-Mem plugin install failed health check: missing ${path}.`,
+      );
     }
   }
 }
 
-export function migrateDevToolkitData(repoRoot: string, runtimeDir: string): void {
+export function migrateDevToolkitData(
+  repoRoot: string,
+  runtimeDir: string,
+): void {
   const migrations = [
     ["data/db", "data/db"],
     ["data/vectors", "data/vectors"],
@@ -265,7 +363,9 @@ export function migrateDevToolkitData(repoRoot: string, runtimeDir: string): voi
   }
 }
 
-function readMarketplace(path: string): Record<string, unknown> & { plugins?: Array<Record<string, unknown>> } {
+function readMarketplace(
+  path: string,
+): Record<string, unknown> & { plugins?: Array<Record<string, unknown>> } {
   if (!existsSync(path)) {
     return {};
   }
@@ -273,5 +373,7 @@ function readMarketplace(path: string): Record<string, unknown> & { plugins?: Ar
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
     throw new Error(`${path} must contain a JSON object.`);
   }
-  return parsed as Record<string, unknown> & { plugins?: Array<Record<string, unknown>> };
+  return parsed as Record<string, unknown> & {
+    plugins?: Array<Record<string, unknown>>;
+  };
 }

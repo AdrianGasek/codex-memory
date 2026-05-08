@@ -19,12 +19,16 @@ describe("worker health checks", () => {
   });
 
   test("fails clearly when health checks never pass", async () => {
-    const fetcher = (async () => new Response("{}", { status: 503 })) as typeof fetch;
-    await expect(waitForHealth("http://127.0.0.1:8000", fetcher, 1)).rejects.toThrow("did not pass health checks");
+    const fetcher = (async () =>
+      new Response("{}", { status: 503 })) as typeof fetch;
+    await expect(
+      waitForHealth("http://127.0.0.1:8000", fetcher, 1),
+    ).rejects.toThrow("did not pass health checks");
   });
 
   test("reuses a healthy Codex-Mem API on the preferred port", async () => {
-    const fetcher = (async () => new Response("{}", { status: 200 })) as typeof fetch;
+    const fetcher = (async () =>
+      new Response("{}", { status: 200 })) as typeof fetch;
     await expect(resolveApiEndpoint(8000, fetcher)).resolves.toEqual({
       port: 8000,
       apiUrl: "http://127.0.0.1:8000",
@@ -34,9 +38,12 @@ describe("worker health checks", () => {
 
   test("chooses the next free port when preferred port is occupied by another process", async () => {
     const server = createServer();
-    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    await new Promise<void>((resolve) =>
+      server.listen(0, "127.0.0.1", resolve),
+    );
     const address = server.address();
-    const occupiedPort = typeof address === "object" && address ? address.port : 0;
+    const occupiedPort =
+      typeof address === "object" && address ? address.port : 0;
     const fetcher = (async () => {
       throw new Error("not Codex-Mem");
     }) as typeof fetch;

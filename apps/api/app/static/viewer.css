@@ -7,12 +7,20 @@
   --accent: #0f766e;
   --panel: #ffffff;
 }
-* { box-sizing: border-box; }
+* {
+  box-sizing: border-box;
+}
 body {
   margin: 0;
   background: var(--bg);
   color: var(--ink);
-  font: 14px/1.45 ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font:
+    14px/1.45 ui-sans-serif,
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif;
 }
 header {
   display: flex;
@@ -26,13 +34,20 @@ header {
   top: 0;
   z-index: 2;
 }
-h1 { margin: 0; font-size: 18px; font-weight: 700; letter-spacing: 0; }
+h1 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: 0;
+}
 main {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 360px;
   min-height: calc(100svh - 62px);
 }
-section { padding: 24px 28px; }
+section {
+  padding: 24px 28px;
+}
 aside {
   border-left: 1px solid var(--line);
   background: var(--panel);
@@ -45,17 +60,41 @@ form {
   gap: 10px;
   max-width: 1060px;
 }
-input, select, button {
+input,
+select,
+button {
   height: 38px;
   border-radius: 6px;
   border: 1px solid var(--line);
   font: inherit;
 }
-input { padding: 0 12px; background: #fff; color: var(--ink); }
-select { padding: 0 10px; background: #fff; color: var(--ink); }
-button { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 650; cursor: pointer; }
-.meta { color: var(--muted); margin: 14px 0 18px; }
-.list { display: grid; gap: 1px; border-top: 1px solid var(--line); max-width: 980px; }
+input {
+  padding: 0 12px;
+  background: #fff;
+  color: var(--ink);
+}
+select {
+  padding: 0 10px;
+  background: #fff;
+  color: var(--ink);
+}
+button {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+  font-weight: 650;
+  cursor: pointer;
+}
+.meta {
+  color: var(--muted);
+  margin: 14px 0 18px;
+}
+.list {
+  display: grid;
+  gap: 1px;
+  border-top: 1px solid var(--line);
+  max-width: 980px;
+}
 .row {
   background: var(--panel);
   padding: 14px 0;
@@ -65,13 +104,37 @@ button { background: var(--accent); border-color: var(--accent); color: #fff; fo
   gap: 16px;
   align-items: start;
 }
-.type { color: var(--accent); font-weight: 700; }
-.title { font-weight: 700; margin-bottom: 4px; }
-.text { color: var(--muted); overflow-wrap: anywhere; }
-.score { color: var(--muted); text-align: right; font-variant-numeric: tabular-nums; }
-h2 { margin: 0 0 14px; font-size: 13px; text-transform: uppercase; color: var(--muted); letter-spacing: 0.08em; }
-.event { padding: 11px 0; border-bottom: 1px solid var(--line); }
-.event strong { display: block; }
+.type {
+  color: var(--accent);
+  font-weight: 700;
+}
+.title {
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+.text {
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.score {
+  color: var(--muted);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+h2 {
+  margin: 0 0 14px;
+  font-size: 13px;
+  text-transform: uppercase;
+  color: var(--muted);
+  letter-spacing: 0.08em;
+}
+.event {
+  padding: 11px 0;
+  border-bottom: 1px solid var(--line);
+}
+.event strong {
+  display: block;
+}
 .select-entry {
   margin-top: 8px;
   height: 30px;
@@ -95,13 +158,35 @@ h2 { margin: 0 0 14px; font-size: 13px; text-transform: uppercase; color: var(--
   padding: 10px 0;
   border-bottom: 1px solid var(--line);
 }
-.components { color: var(--muted); font-variant-numeric: tabular-nums; }
+.components {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
 @media (max-width: 820px) {
-  main { grid-template-columns: 1fr; }
-  aside { border-left: 0; border-top: 1px solid var(--line); }
-  header, section, aside { padding-left: 16px; padding-right: 16px; }
-  form { grid-template-columns: 1fr; }
-  .debug-row { grid-template-columns: 1fr; }
-  .row { grid-template-columns: 1fr; gap: 4px; }
-  .score { text-align: left; }
+  main {
+    grid-template-columns: 1fr;
+  }
+  aside {
+    border-left: 0;
+    border-top: 1px solid var(--line);
+  }
+  header,
+  section,
+  aside {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+  form {
+    grid-template-columns: 1fr;
+  }
+  .debug-row {
+    grid-template-columns: 1fr;
+  }
+  .row {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+  .score {
+    text-align: left;
+  }
 }

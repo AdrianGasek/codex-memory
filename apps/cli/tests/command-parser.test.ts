@@ -19,13 +19,17 @@ afterEach(() => {
 
 describe("command parser", () => {
   test("parses install/start/doctor/uninstall style options", () => {
-    expect(parseOptions(["--yes", "--port", "8123", "--cwd", "repo"]).get("port")).toEqual(["8123"]);
+    expect(
+      parseOptions(["--yes", "--port", "8123", "--cwd", "repo"]).get("port"),
+    ).toEqual(["8123"]);
     expect(parseOptions(["doctor"]).get("_")).toEqual(["doctor"]);
   });
 
   test("help lists product lifecycle commands", async () => {
     const logs: string[] = [];
-    console.log = mock((message: string) => logs.push(message)) as unknown as typeof console.log;
+    console.log = mock((message: string) =>
+      logs.push(message),
+    ) as unknown as typeof console.log;
 
     await runCommand("help", []);
 
@@ -43,7 +47,9 @@ describe("command parser", () => {
     const logs: string[] = [];
     try {
       process.env.CODEX_MEM_HOME = runtimeHome;
-      console.log = mock((message: string) => logs.push(message)) as unknown as typeof console.log;
+      console.log = mock((message: string) =>
+        logs.push(message),
+      ) as unknown as typeof console.log;
 
       await runCommand("status", []);
       await runCommand("stop", []);

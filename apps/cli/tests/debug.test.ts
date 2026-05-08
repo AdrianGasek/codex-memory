@@ -43,7 +43,14 @@ describe("debugCommand", () => {
       logs.push(message);
     }) as unknown as typeof console.log;
 
-    await debugCommand(["--query", "project memory", "--limit", "2", "--profile", "deep"]);
+    await debugCommand([
+      "--query",
+      "project memory",
+      "--limit",
+      "2",
+      "--profile",
+      "deep",
+    ]);
 
     expect(urls).toEqual([
       "http://memory.test/health",

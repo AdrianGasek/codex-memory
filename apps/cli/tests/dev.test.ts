@@ -15,8 +15,15 @@ describe("devDoctor", () => {
     const repo = mkdtempSync(join(tmpdir(), "codex-mem-dev-"));
     const logs: string[] = [];
     try {
-      writeToolkit(repo, { "api:dev": "x", "mcp:dev": "x", "cli:test": "x", "api:test": "x" });
-      console.log = mock((message: string) => logs.push(message)) as unknown as typeof console.log;
+      writeToolkit(repo, {
+        "api:dev": "x",
+        "mcp:dev": "x",
+        "cli:test": "x",
+        "api:test": "x",
+      });
+      console.log = mock((message: string) =>
+        logs.push(message),
+      ) as unknown as typeof console.log;
 
       devDoctor(repo);
 
@@ -29,8 +36,14 @@ describe("devDoctor", () => {
   test("fails clearly for an incomplete checkout", () => {
     const repo = mkdtempSync(join(tmpdir(), "codex-mem-dev-"));
     try {
-      writeFileSync(join(repo, "package.json"), JSON.stringify({ scripts: {} }), "utf8");
-      expect(() => devDoctor(repo)).toThrow("Developer Toolkit checkout is incomplete");
+      writeFileSync(
+        join(repo, "package.json"),
+        JSON.stringify({ scripts: {} }),
+        "utf8",
+      );
+      expect(() => devDoctor(repo)).toThrow(
+        "Developer Toolkit checkout is incomplete",
+      );
     } finally {
       rmSync(repo, { recursive: true, force: true });
     }
@@ -38,7 +51,11 @@ describe("devDoctor", () => {
 });
 
 function writeToolkit(repo: string, scripts: Record<string, string>): void {
-  writeFileSync(join(repo, "package.json"), JSON.stringify({ scripts }), "utf8");
+  writeFileSync(
+    join(repo, "package.json"),
+    JSON.stringify({ scripts }),
+    "utf8",
+  );
   for (const path of [
     "apps/api/pyproject.toml",
     "apps/cli/package.json",

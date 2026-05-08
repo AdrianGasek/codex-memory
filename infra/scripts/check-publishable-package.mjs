@@ -10,24 +10,40 @@ if (manifest.private === true) {
 }
 
 if (!manifest.name || !manifest.version) {
-  console.error(`${packagePath} must include name and version before publishing.`);
+  console.error(
+    `${packagePath} must include name and version before publishing.`,
+  );
   process.exit(1);
 }
 
 if (manifest.name === "codex-mem") {
-  console.error("The npm package name codex-mem is already taken. Use codex-memory for the public CLI package.");
+  console.error(
+    "The npm package name codex-mem is already taken. Use codex-memory for the public CLI package.",
+  );
   process.exit(1);
 }
 
-if (manifest.name === "codex-memory" && process.env.CODEX_MEMORY_NPM_AVAILABILITY_CONFIRMED !== "true") {
-  console.error("Set CODEX_MEMORY_NPM_AVAILABILITY_CONFIRMED=true only after confirming npm availability for codex-memory.");
+if (
+  manifest.name === "codex-memory" &&
+  process.env.CODEX_MEMORY_NPM_AVAILABILITY_CONFIRMED !== "true"
+) {
+  console.error(
+    "Set CODEX_MEMORY_NPM_AVAILABILITY_CONFIRMED=true only after confirming npm availability for codex-memory.",
+  );
   process.exit(1);
 }
 
-const dependencySections = ["dependencies", "devDependencies", "peerDependencies", "optionalDependencies"];
+const dependencySections = [
+  "dependencies",
+  "devDependencies",
+  "peerDependencies",
+  "optionalDependencies",
+];
 for (const section of dependencySections) {
   if (manifest[section]?.[manifest.name]) {
-    console.error(`${manifest.name} must not list itself in ${section}. Run install tests from a temporary consumer project instead.`);
+    console.error(
+      `${manifest.name} must not list itself in ${section}. Run install tests from a temporary consumer project instead.`,
+    );
     process.exit(1);
   }
 }

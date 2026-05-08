@@ -4,8 +4,13 @@ import { join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 
 const repoRoot = resolve(import.meta.dirname, "../..");
-const packageJson = JSON.parse(readFileSync(resolve(repoRoot, "apps/cli/package.json"), "utf8"));
-const tarball = resolve(repoRoot, process.argv[2] ?? `dist/release/codex-memory-${packageJson.version}.tgz`);
+const packageJson = JSON.parse(
+  readFileSync(resolve(repoRoot, "apps/cli/package.json"), "utf8"),
+);
+const tarball = resolve(
+  repoRoot,
+  process.argv[2] ?? `dist/release/codex-memory-${packageJson.version}.tgz`,
+);
 const tempDir = mkdtempSync(join(tmpdir(), "codex-mem-pack-smoke-"));
 
 function run(command, args, options = {}) {

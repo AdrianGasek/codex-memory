@@ -1,13 +1,21 @@
 import { MemoryClient, type MemoryType } from "../client/memoryClient.js";
 import { option, optionList, parseOptions } from "./args.js";
 
-const allowedTypes = new Set(["fact", "decision", "bug", "solution", "pattern"]);
+const allowedTypes = new Set([
+  "fact",
+  "decision",
+  "bug",
+  "solution",
+  "pattern",
+]);
 
 export async function rememberCommand(args: string[]): Promise<void> {
   const options = parseOptions(args);
   const type = option(options, "type", "fact") as MemoryType;
   if (!allowedTypes.has(type)) {
-    throw new Error(`Invalid --type "${type}". Use fact, decision, bug, solution, or pattern.`);
+    throw new Error(
+      `Invalid --type "${type}". Use fact, decision, bug, solution, or pattern.`,
+    );
   }
 
   const title = option(options, "title");

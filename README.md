@@ -12,217 +12,229 @@
 
 # Codex-Mem
 
-Persistent, local-first memory for Codex agents.
+Local memory for Codex agents.
 
-Codex-Mem stores reusable project knowledge in SQLite, exposes it through CLI, HTTP API, MCP tools, and Codex hooks, then injects the most relevant context into future Codex sessions.
+Codex starts every session without knowing what happened before. Codex-Mem fixes that by storing project memory locally and making it available to future Codex sessions.
 
-## Install In A Codex Project
+## Why?
 
-Run this inside the repository where you want Codex memory enabled:
+Without memory:
+
+- Codex repeats the same mistakes
+- old decisions get lost
+- every session starts from zero
+
+With Codex-Mem:
+
+- Codex can recall previous project decisions
+- reuse known fixes
+- inject relevant context automatically
+
+## Quick Start
 
 ```bash
 npx codex-memory install
 codex-memory doctor
-codex-memory status
 ```
 
-The installer:
+Restart Codex.
 
-- creates `.codex/mem.config.json`
-- adds the Codex plugin entry to `.agents/plugins/marketplace.json`
-- installs runtime files under `~/.codex-mem`
-- starts the local memory API
-- wires the plugin hooks and MCP server to that runtime
-
-After install, restart Codex or reload the workspace so it can discover the plugin metadata.
-
-## Use The Library
-
-Add a memory:
+Try it:
 
 ```bash
 codex-memory remember \
   --type decision \
   --title "Use SQLite for local storage" \
-  --context "Project memory MVP" \
-  --resolution "Keep canonical memory in SQLite and use local embeddings by default."
+  --context "Storage decision" \
+  --resolution "Use SQLite as the local source of truth."
+
+codex-memory query "SQLite"
 ```
 
-Query memory:
+## First Successful Run
+
+1. Install:
 
 ```bash
-codex-memory query "SQLite storage"
-codex-memory debug --query "current task"
-codex-memory get <memory-id>
+npx codex-memory install
 ```
 
-Manage the local worker:
+2. Check:
 
 ```bash
-codex-memory status
-codex-memory restart
-codex-memory stop
-codex-memory start
+codex-memory doctor
 ```
 
-Remove the plugin from a project:
+3. Save memory:
 
 ```bash
-codex-memory uninstall
+codex-memory remember \
+  --type fact \
+  --title "Project uses Next.js" \
+  --context "Frontend stack"
 ```
 
-## Codex Plugin Setup For Developers
-
-Use this path when you are developing this repository or testing the repo-local plugin scaffold.
-
-1. Install dependencies:
+4. Query it:
 
 ```bash
-bun install
-uv sync --project apps/api
+codex-memory query "frontend stack"
 ```
 
-2. Start the API:
+If this works, Codex-Mem is ready.
 
-```bash
-bun run api:dev
-```
+## Who Is This For?
 
-3. In another terminal, start the MCP server:
+Codex-Mem is for developers who use Codex on real codebases and want the agent to remember:
 
-```bash
-bun run mcp:dev
-```
+- architecture decisions
+- solved bugs
+- project conventions
+- recurring fixes
+- implementation patterns
 
-4. Point Codex at the repo-local plugin.
+## Privacy
 
-The local marketplace file is already present at `.agents/plugins/marketplace.json` and points to:
+Codex-Mem is local-first.
+
+- memory is stored locally in SQLite
+- no hosted service is required
+- do not store secrets, API keys, tokens, credentials, or personal data
+
+## What Gets Installed?
+
+- local SQLite memory database
+- Codex plugin hooks
+- local memory API
+- MCP tools for Codex
+
+## Common Commands
+
+| Command                  | What it does        |
+| ------------------------ | ------------------- |
+| `codex-memory remember`  | save memory         |
+| `codex-memory query`     | search memory       |
+| `codex-memory status`    | check worker/API    |
+| `codex-memory doctor`    | diagnose setup      |
+| `codex-memory uninstall` | remove from project |
+
+## Terminal Demo
 
 ```text
-./plugins/codex-mem
+$ codex-memory remember --type bug --title "Vite build fails on Windows"
+✓ Memory saved
+
+$ codex-memory query "Vite Windows"
+Found 1 memory:
+[bug] Vite build fails on Windows
+Solution: use cross-env for NODE_ENV
 ```
 
-The plugin contains:
+## Before Codex-Mem
 
-- `.codex-plugin/plugin.json` - Codex plugin metadata
-- `.mcp.json` - MCP server command
-- `hooks.json` - Codex hook commands
-- `scripts/hook_memory.py` - hook runner
-- `skills/mem-search/SKILL.md` - memory search skill
+User: Fix the failing build.
 
-5. Make sure the API URL is available to hooks and MCP:
+Codex: Tries the same broken approach from last week.
 
-```powershell
-$env:CODEX_MEM_API_URL = "http://127.0.0.1:8000"
-$env:CODEX_MEM_HOOKS_ENABLED = "true"
-$env:CODEX_MEM_MODE = "active"
-```
+## After Codex-Mem
 
-6. Verify the setup:
+Codex checks memory:
+
+- known issue: build fails on Windows because `NODE_ENV` is set incorrectly
+- solution: use `cross-env`
+
+Then applies the known fix.
+
+## Example Memories
+
+### Architecture Decision
 
 ```bash
-bun run cli dev doctor
-bun run cli remember --type fact --title "Plugin smoke" --context "Repo-local plugin setup works."
-bun run cli query "Plugin smoke"
+codex-memory remember \
+  --type decision \
+  --title "Use Prisma migrations" \
+  --context "Database schema changes" \
+  --resolution "All schema changes must go through Prisma migrations."
 ```
 
-For a real consumer project, prefer `npx codex-memory install`; it copies built runtime assets to `~/.codex-mem` and writes an absolute plugin path, so the consuming repo does not depend on this checkout.
-
-## MCP Tools
-
-Codex-Mem exposes these MCP tools:
-
-- `query_memory`
-- `store_memory`
-- `delete_memory`
-
-The installed plugin writes an MCP config similar to:
-
-```json
-{
-  "mcpServers": {
-    "codex-memory": {
-      "command": "bun",
-      "args": ["<runtime>/mcp-server/dist/server.js"],
-      "env": {
-        "CODEX_MEM_API_URL": "http://127.0.0.1:8000"
-      }
-    }
-  }
-}
-```
-
-## Configuration
-
-Project config lives in `.codex/mem.config.json`.
-
-Common environment variables:
+### Known Bug
 
 ```bash
-CODEX_MEM_API_URL=http://127.0.0.1:8000
-CODEX_MEM_HOME=~/.codex-mem
-CODEX_MEM_MODE=active
-CODEX_MEM_HOOKS_ENABLED=true
-CODEX_MEM_VECTOR_BACKEND=local
+codex-memory remember \
+  --type bug \
+  --title "Tests fail when API worker is offline" \
+  --context "Local test setup" \
+  --resolution "Run codex-memory doctor before integration tests."
 ```
 
-Memory data is local by default. Do not store secrets, tokens, credentials, or private personal data as memory.
-
-## Repository Layout
-
-- `apps/api` - FastAPI memory API and SQLite storage
-- `apps/cli` - `codex-memory` CLI, installer, worker management, and diagnostics
-- `apps/mcp-server` - MCP stdio/HTTP server exposing memory tools
-- `plugins/codex-mem` - repo-local Codex plugin scaffold
-- `shared/schemas` - shared memory schemas
-- `shared/prompts` - prompt templates for capture and injection
-- `docs` - longer product documentation
-
-## API
-
-Useful local endpoints:
-
-- `GET /health`
-- `POST /memory`
-- `GET /memory/search?query=...`
-- `GET /memory/inject?query=...`
-- `DELETE /memory/{id}`
-
-## Test And Release Checks
+### Project Pattern
 
 ```bash
-bun run typecheck
-bun run cli:test
-bun run api:test
-bun run pack:smoke
+codex-memory remember \
+  --type pattern \
+  --title "Use service layer for database writes" \
+  --context "Backend architecture" \
+  --resolution "Routes should call services, not database code directly."
 ```
 
-## Publishing To npm
+## How It Works
 
-This repository is a monorepo. The root `package.json` is private and exists for development tasks, workspaces, and shared build scripts. It is not the npm package users install.
-
-The public npm package is `apps/cli/package.json`, which publishes the `codex-memory` CLI plus the staged runtime files needed by installed projects.
-
-Publish from the CLI package directory:
-
-```bash
-cd apps/cli
-npm pack --dry-run
-npm publish --access public
+```text
+Codex session
+     ↓
+Codex-Mem hook
+     ↓
+Local SQLite memory
+     ↓
+Relevant memories
+     ↓
+Injected context
+     ↓
+Better Codex answer
 ```
 
-Before publishing, confirm the dry run includes `README.md`, `dist`, `runtime`, `LICENSE`, and `package.json`.
+## Current Status
 
-## Troubleshooting
+Supported:
 
-- `npx` fails on Windows PowerShell: try `npx.cmd codex-memory install`.
-- `npm i codex-memory` fails inside this source checkout: use `bun install` for repo development, or run `npx codex-memory install` from a separate target project. Do not run `npm i codex-memory` from `apps/cli`; that asks npm to install the package into itself.
-- API is offline: run `codex-memory doctor`, then `codex-memory restart`.
-- Port `8000` is busy: the installer reuses a healthy API or selects another local port.
-- MCP tools fail: check `codex-memory doctor` and confirm `CODEX_MEM_API_URL`.
-- Hooks are silent: confirm `CODEX_MEM_HOOKS_ENABLED=true` and restart Codex.
-- Runtime looks broken: rerun `npx codex-memory install` in the target project.
+- local SQLite memory
+- CLI memory commands
+- local API
+- MCP tools
+- Codex hooks
+
+Not supported yet:
+
+- hosted cloud sync
+- team authorization
+- managed dashboard
+- encrypted remote memory
+
+## FAQ
+
+### Does it send my code to a server?
+
+No. Memory is local-first and stored in SQLite.
+
+### Do I need MCP?
+
+For basic CLI usage, no. MCP is used for agent integration.
+
+### Does it work without Codex?
+
+The CLI can store and query memory, but the main integration target is Codex.
+
+### Where is memory stored?
+
+By default under `~/.codex-mem`.
+
+### How do I reset everything?
+
+Run `codex-memory uninstall` and remove the local memory directory.
+
+## Developer Docs
+
+See [docs/development.md](docs/development.md) for repository setup, local API/MCP development, publishing checks, and CI commands.
 
 ## Status
 
-Codex-Mem is a local-first beta. SQLite is the source of truth; optional vector backends are index backends, not replacements for SQLite. Team/shared memory exists as local namespaces, not as a hosted synchronization or authorization service.
+Beta. Local-first. Do not store secrets.

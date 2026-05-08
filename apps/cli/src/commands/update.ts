@@ -1,7 +1,17 @@
-import { MemoryClient, type MemoryType, type MemoryUpdatePayload } from "../client/memoryClient.js";
+import {
+  MemoryClient,
+  type MemoryType,
+  type MemoryUpdatePayload,
+} from "../client/memoryClient.js";
 import { option, optionList, parseOptions } from "./args.js";
 
-const allowedTypes = new Set(["fact", "decision", "bug", "solution", "pattern"]);
+const allowedTypes = new Set([
+  "fact",
+  "decision",
+  "bug",
+  "solution",
+  "pattern",
+]);
 
 export async function updateCommand(args: string[]): Promise<void> {
   const options = parseOptions(args);
@@ -14,7 +24,9 @@ export async function updateCommand(args: string[]): Promise<void> {
   const type = option(options, "type");
   if (type) {
     if (!allowedTypes.has(type)) {
-      throw new Error(`Invalid --type "${type}". Use fact, decision, bug, solution, or pattern.`);
+      throw new Error(
+        `Invalid --type "${type}". Use fact, decision, bug, solution, or pattern.`,
+      );
     }
     payload.type = type as MemoryType;
   }
@@ -30,7 +42,8 @@ export async function updateCommand(args: string[]): Promise<void> {
   const importance = option(options, "importance");
   if (importance) payload.importance = Number(importance);
   const pinned = option(options, "pinned");
-  if (pinned) payload.pinned = ["1", "true", "yes", "on"].includes(pinned.toLowerCase());
+  if (pinned)
+    payload.pinned = ["1", "true", "yes", "on"].includes(pinned.toLowerCase());
   const filePaths = optionList(options, "path");
   if (filePaths.length > 0) payload.file_paths = filePaths;
   const tags = optionList(options, "tag");

@@ -10,12 +10,7 @@
   "homepage": "https://developers.openai.com/codex",
   "repository": "https://github.com/local/codex-mem",
   "license": "MIT",
-  "keywords": [
-    "codex",
-    "memory",
-    "mcp",
-    "agent"
-  ],
+  "keywords": ["codex", "memory", "mcp", "agent"],
   "skills": "./skills/",
   "hooks": "./hooks.json",
   "mcpServers": "./.mcp.json",
@@ -25,11 +20,7 @@
     "longDescription": "Codex-Mem stores durable project knowledge, exposes it through MCP tools, and injects relevant memory into future Codex sessions.",
     "developerName": "Codex-Mem",
     "category": "Productivity",
-    "capabilities": [
-      "Memory",
-      "MCP",
-      "Hooks"
-    ],
+    "capabilities": ["Memory", "MCP", "Hooks"],
     "websiteURL": "https://developers.openai.com/codex",
     "privacyPolicyURL": "https://openai.com/policies/row-privacy-policy/",
     "termsOfServiceURL": "https://openai.com/policies/row-terms-of-use/",

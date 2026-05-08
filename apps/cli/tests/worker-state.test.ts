@@ -10,7 +10,12 @@ describe("worker state", () => {
     try {
       writeFileSync(
         join(runtimeDir, "worker.json"),
-        JSON.stringify({ pid: 123, port: 8123, apiUrl: "http://127.0.0.1:8123", logsDir: join(runtimeDir, "logs") }),
+        JSON.stringify({
+          pid: 123,
+          port: 8123,
+          apiUrl: "http://127.0.0.1:8123",
+          logsDir: join(runtimeDir, "logs"),
+        }),
         "utf8",
       );
 
