@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="./logo.png" alt="Codex-Mem logo" width="160">
+  <img src="./logo.png" alt="codex-memory logo" width="160">
 </p>
 
 <p align="center">
@@ -10,7 +10,7 @@
   <img src="https://img.shields.io/npm/types/codex-memory?style=flat-square" alt="TypeScript types">
 </p>
 
-# Codex-Mem
+# codex-memory
 
 Local memory for Codex agents.
 
