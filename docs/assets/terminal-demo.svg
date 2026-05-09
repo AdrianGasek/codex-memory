@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="920" height="460" viewBox="0 0 920 460" role="img" aria-labelledby="title desc">
+  <title id="title">codex-memory terminal demo</title>
+  <desc id="desc">Terminal screenshot showing install, doctor, remember, and query commands.</desc>
+  <rect width="920" height="460" fill="#101418"/>
+  <rect x="24" y="24" width="872" height="412" rx="8" fill="#171c21" stroke="#303943"/>
+  <circle cx="52" cy="50" r="6" fill="#ff5f57"/>
+  <circle cx="74" cy="50" r="6" fill="#ffbd2e"/>
+  <circle cx="96" cy="50" r="6" fill="#28c840"/>
+  <text x="124" y="56" fill="#aab4bf" font-family="Consolas, 'Liberation Mono', monospace" font-size="15">codex-memory quick smoke</text>
+  <g font-family="Consolas, 'Liberation Mono', monospace" font-size="20">
+    <text x="52" y="100" fill="#8bd5ff">$ npx codex-memory install</text>
+    <text x="52" y="132" fill="#d7dee7">Installed runtime in ~/.codex-mem</text>
+    <text x="52" y="164" fill="#d7dee7">Wrote .codex/mem.config.json</text>
+    <text x="52" y="196" fill="#8bd5ff">$ codex-memory doctor</text>
+    <text x="52" y="228" fill="#9be28f">API: ok</text>
+    <text x="52" y="260" fill="#9be28f">DB file: ok (.../codex-mem.sqlite3)</text>
+    <text x="52" y="292" fill="#9be28f">MCP server: ok (.../server.js)</text>
+    <text x="52" y="324" fill="#8bd5ff">$ codex-memory remember --type decision --title "Use SQLite"</text>
+    <text x="52" y="356" fill="#d7dee7">Memory saved</text>
+    <text x="52" y="388" fill="#8bd5ff">$ codex-memory query "SQLite"</text>
+    <text x="52" y="420" fill="#f7d774">[decision] Use SQLite</text>
+  </g>
+</svg>

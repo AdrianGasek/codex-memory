@@ -119,6 +119,8 @@ Codex-Mem is local-first.
 
 ## Terminal Demo
 
+![codex-memory terminal demo](docs/assets/terminal-demo.svg)
+
 ```text
 $ codex-memory remember --type bug --title "Vite build fails on Windows"
 ✓ Memory saved
@@ -145,6 +147,10 @@ Codex checks memory:
 Then applies the known fix.
 
 ## Example Memories
+
+See [memory type examples](docs/memory-types.md) for `fact`, `decision`,
+`bug`, `solution`, and `pattern` entries with realistic commands and expected
+query output.
 
 ### Architecture Decision
 
@@ -234,6 +240,12 @@ Run `codex-memory uninstall` and remove the local memory directory.
 ## Developer Docs
 
 See [docs/development.md](docs/development.md) for repository setup, local API/MCP development, publishing checks, and CI commands.
+
+Focused guides:
+
+- [Windows install](docs/windows-install.md)
+- [Memory type examples](docs/memory-types.md)
+- [MCP integration](docs/mcp-integration.md)
 
 ## Status
 

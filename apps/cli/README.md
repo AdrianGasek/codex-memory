@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://raw.githubusercontent.com/AdrianGasek/codex-memory/main/logo.png" alt="Codex-Mem logo" width="160">
+  <img src="https://raw.githubusercontent.com/AdrianGasek/codex-memory/main/logo.png" alt="codex-memory logo" width="160">
 </p>
 
 <p align="center">
@@ -25,6 +25,10 @@ codex-memory remember --type decision --title "Use SQLite" --context "Local memo
 codex-memory query "SQLite"
 ```
 
+On Windows PowerShell, use `npx.cmd codex-memory install` if `npx` is not
+resolved. Run `codex-memory doctor` after install to confirm the API URL,
+SQLite path, MCP server, plugin config, hooks, and worker port.
+
 ## Common Commands
 
 ```bash
@@ -33,6 +37,24 @@ codex-memory restart
 codex-memory debug --query "current task"
 codex-memory uninstall
 ```
+
+## Memory Types
+
+Use `fact`, `decision`, `bug`, `solution`, and `pattern` for durable project
+knowledge:
+
+```bash
+codex-memory remember --type fact --title "Frontend uses Next.js" --context "Application stack"
+codex-memory remember --type bug --title "Windows shell cannot resolve npx" --context "PowerShell install path" --resolution "Run npx.cmd codex-memory install."
+codex-memory query "PowerShell npx"
+```
+
+## MCP
+
+The installer writes MCP configuration for the packaged server. The server uses
+`CODEX_MEM_API_URL`, usually `http://127.0.0.1:8000`, and exposes memory tools
+such as `query_memory`, `store_memory`, `get_memory`, `update_memory`, and
+`delete_memory`.
 
 ## Data
 

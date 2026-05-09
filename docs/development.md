@@ -71,6 +71,9 @@ Codex-Mem exposes these MCP tools:
 - `store_memory`
 - `delete_memory`
 
+See [MCP integration](mcp-integration.md) for the full tool list, stdio config,
+HTTP smoke checks, and troubleshooting.
+
 The installed plugin writes an MCP config similar to:
 
 ```json
@@ -148,6 +151,7 @@ Before publishing, confirm the dry run includes `README.md`, `dist`, `runtime`, 
 
 ## Troubleshooting
 
+- Windows install details live in [Windows install](windows-install.md).
 - `npx` fails on Windows PowerShell: try `npx.cmd codex-memory install`.
 - `npm i codex-memory` fails inside this source checkout: use `bun install` for repo development, or run `npx codex-memory install` from a separate target project.
 - API is offline: run `codex-memory doctor`, then `codex-memory restart`.

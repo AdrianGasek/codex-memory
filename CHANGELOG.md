@@ -2,6 +2,13 @@
 
 All notable changes to Codex-Mem are documented here.
 
+## 1.0.7 - 2026-05-09
+
+- Added Windows install, memory type, and MCP integration guides.
+- Added a terminal demo visual to the README.
+- Improved `codex-memory doctor` diagnostics with explicit runtime, API, DB,
+  MCP, plugin, hook, and Windows path details.
+
 ## 1.0.6 - 2026-05-09
 
 - Prepared the next patch release of the `codex-memory` CLI package.
