@@ -1,0 +1,98 @@
+name: Publish npm
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: publish-npm
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Publish codex-memory
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up Node for npm publish
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Read package version
+        id: package
+        run: |
+          package_name="$(node -p "require('./apps/cli/package.json').name")"
+          package_version="$(node -p "require('./apps/cli/package.json').version")"
+          echo "name=$package_name" >> "$GITHUB_OUTPUT"
+          echo "version=$package_version" >> "$GITHUB_OUTPUT"
+
+      - name: Check npm version
+        id: npm
+        run: |
+          if npm view "${{ steps.package.outputs.name }}@${{ steps.package.outputs.version }}" version >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "${{ steps.package.outputs.name }}@${{ steps.package.outputs.version }} already exists on npm. Skipping publish." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+            echo "${{ steps.package.outputs.name }}@${{ steps.package.outputs.version }} is not on npm yet. Publishing after checks pass." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Check npm token
+        if: steps.npm.outputs.exists == 'false'
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          if [ -z "$NODE_AUTH_TOKEN" ]; then
+            echo "NPM_TOKEN repository secret is required to publish." >&2
+            exit 1
+          fi
+
+      - name: Check formatting
+        if: steps.npm.outputs.exists == 'false'
+        run: bun run format:check
+
+      - name: Run smoke checks
+        if: steps.npm.outputs.exists == 'false'
+        run: bash infra/scripts/smoke.sh
+
+      - name: Check package publishability
+        if: steps.npm.outputs.exists == 'false'
+        run: node infra/scripts/check-publishable-confirmed.mjs apps/cli/package.json
+
+      - name: Run package smoke
+        if: steps.npm.outputs.exists == 'false'
+        run: bun run pack:smoke
+
+      - name: Publish to npm
+        if: steps.npm.outputs.exists == 'false'
+        working-directory: apps/cli
+        env:
+          CODEX_MEMORY_NPM_AVAILABILITY_CONFIRMED: "true"
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish --access public --provenance

@@ -38,5 +38,8 @@ Project workflow:
 1. Use `.codex/ROADMAP.md` as the implementation checklist.
 2. Mark roadmap items `[x]` only after code exists and matching verification passes.
 3. Keep roadmap changes tied to completed work.
+4. After each completed code or documentation change, prepare a git commit with
+   a clear imperative title and a body that explains what changed, why it
+   changed, and what verification passed.
 
 Memory is a decision aid. Current code is still the source of truth.

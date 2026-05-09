@@ -3,6 +3,7 @@
 !.codex/
 !.codex/ROADMAP.md
 !.codex/mem.config.json
+!.codex/npm-publishing.md
 data/db/*
 data/vectors/*
 !data/db/.gitkeep
