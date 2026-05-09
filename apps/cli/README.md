@@ -12,7 +12,7 @@
 
 # codex-memory
 
-Local persistent memory for Codex agents.
+Project-local memory for Codex agents.
 
 `codex-memory` installs a local memory runtime for a Codex workspace. It stores project knowledge in SQLite, exposes MCP tools, and wires Codex hooks so agents can search, capture, and reuse decisions, fixes, facts, and patterns across sessions.
 
@@ -55,6 +55,14 @@ The installer writes MCP configuration for the packaged server. The server uses
 `CODEX_MEM_API_URL`, usually `http://127.0.0.1:8000`, and exposes memory tools
 such as `query_memory`, `store_memory`, `get_memory`, `update_memory`, and
 `delete_memory`.
+
+## Guides
+
+- [Windows install](https://github.com/AdrianGasek/codex-memory/blob/main/docs/windows-install.md)
+- [Memory type examples](https://github.com/AdrianGasek/codex-memory/blob/main/docs/memory-types.md)
+- [MCP integration](https://github.com/AdrianGasek/codex-memory/blob/main/docs/mcp-integration.md)
+- [Team benefits](https://github.com/AdrianGasek/codex-memory/blob/main/docs/team-benefits.md)
+- [Comparison with Codex memories](https://github.com/AdrianGasek/codex-memory/blob/main/docs/codex-memories-comparison.md)
 
 ## Data
 

@@ -1,6 +1,6 @@
 {
   "name": "codex-mem",
-  "version": "1.0.7",
+  "version": "1.0.8",
   "private": true,
   "type": "module",
   "description": "Local persistent memory for Codex agents that captures, searches, and reuses project knowledge.",

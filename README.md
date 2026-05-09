@@ -12,9 +12,11 @@
 
 # codex-memory
 
-Local memory for Codex agents.
+Project-local memory for Codex agents.
 
-Codex starts every session without knowing what happened before. Codex-Mem fixes that by storing project memory locally and making it available to future Codex sessions.
+Codex starts every session without knowing what happened before. `codex-memory`
+stores validated project memory locally and makes it available to future Codex
+sessions.
 
 ## Why?
 
@@ -24,7 +26,7 @@ Without memory:
 - old decisions get lost
 - every session starts from zero
 
-With Codex-Mem:
+With `codex-memory`:
 
 - Codex can recall previous project decisions
 - reuse known fixes
@@ -80,11 +82,12 @@ codex-memory remember \
 codex-memory query "frontend stack"
 ```
 
-If this works, Codex-Mem is ready.
+If this works, `codex-memory` is ready.
 
 ## Who Is This For?
 
-Codex-Mem is for developers who use Codex on real codebases and want the agent to remember:
+`codex-memory` is for developers who use Codex on real codebases and want the
+agent to remember:
 
 - architecture decisions
 - solved bugs
@@ -94,7 +97,7 @@ Codex-Mem is for developers who use Codex on real codebases and want the agent t
 
 ## Privacy
 
-Codex-Mem is local-first.
+`codex-memory` is local-first.
 
 - memory is stored locally in SQLite
 - no hosted service is required
@@ -131,13 +134,13 @@ Found 1 memory:
 Solution: use cross-env for NODE_ENV
 ```
 
-## Before Codex-Mem
+## Before codex-memory
 
 User: Fix the failing build.
 
 Codex: Tries the same broken approach from last week.
 
-## After Codex-Mem
+## After codex-memory
 
 Codex checks memory:
 
@@ -187,7 +190,7 @@ codex-memory remember \
 ```text
 Codex session
      ↓
-Codex-Mem hook
+codex-memory hook
      ↓
 Local SQLite memory
      ↓
@@ -246,6 +249,8 @@ Focused guides:
 - [Windows install](docs/windows-install.md)
 - [Memory type examples](docs/memory-types.md)
 - [MCP integration](docs/mcp-integration.md)
+- [Team benefits](docs/team-benefits.md)
+- [Comparison with Codex memories](docs/codex-memories-comparison.md)
 
 ## Status
 

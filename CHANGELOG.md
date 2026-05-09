@@ -2,6 +2,12 @@
 
 All notable changes to Codex-Mem are documented here.
 
+## 1.0.8 - 2026-05-09
+
+- Added team benefits and Codex memories comparison documentation.
+- Linked the new guides from both repository and npm package READMEs.
+- Aligned README wording around the `codex-memory` package name.
+
 ## 1.0.7 - 2026-05-09
 
 - Added Windows install, memory type, and MCP integration guides.
