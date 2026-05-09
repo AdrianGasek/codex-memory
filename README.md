@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="./logo.png" alt="codex-memory logo" width="160">
+  <img src="./new_gh_banner.png" alt="codex-memory banner">
 </p>
 
 <p align="center">

@@ -2,6 +2,11 @@
 
 All notable changes to Codex-Mem are documented here.
 
+## 1.0.9 - 2026-05-09
+
+- Replaced the README logo image with the `new_gh_banner.png` banner in both
+  repository and npm package READMEs.
+
 ## 1.0.8 - 2026-05-09
 
 - Added team benefits and Codex memories comparison documentation.
