@@ -20,6 +20,7 @@ declare const Bun: {
     port: number;
     fetch: (request: Request) => Response | Promise<Response>;
   }) => unknown;
+  spawnSync: (args: string[]) => { stdout: Uint8Array; stderr: Uint8Array; exitCode: number };
 };
 
 const apiUrl = (
@@ -354,6 +355,8 @@ async function callTool(params: Record<string, JsonValue>): Promise<JsonValue> {
       if (!id) throw new Error("delete_memory requires id.");
       const result = await apiRequest(`/memory/${encodeURIComponent(id)}`, {
         method: "DELETE",
+        body: "{}",
+        headers: { "content-length": "2" },
       });
       return toolText(JSON.stringify(result, null, 2));
     }
@@ -366,19 +369,17 @@ async function apiRequest(
   path: string,
   init: RequestInit = {},
 ): Promise<JsonValue> {
-  const response = await fetch(`${apiUrl}${path}`, {
-    ...init,
-    headers: {
-      "content-type": "application/json",
-      ...(init.headers ?? {}),
-    },
-  });
-  if (!response.ok) {
-    throw new Error(
-      `Codex-Mem API ${response.status}: ${await response.text()}`,
-    );
+  const method = String(init.method ?? "GET");
+  const args = ["curl", "-s", "-X", method, "-H", "content-type: application/json"];
+  if (typeof init.body === "string") {
+    args.push("--data", init.body);
   }
-  return response.json() as Promise<JsonValue>;
+  args.push(apiUrl + path);
+  const result = Bun.spawnSync(args);
+  if (result.exitCode !== 0) {
+    throw new Error(new TextDecoder().decode(result.stderr).trim() || `${method} request failed`);
+  }
+  return JSON.parse(new TextDecoder().decode(result.stdout)) as JsonValue;
 }
 
 function toolText(text: string): JsonValue {

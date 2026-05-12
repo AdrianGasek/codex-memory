@@ -201,6 +201,49 @@ Injected context
 Better Codex answer
 ```
 
+## Inspection And Budgeting
+
+Preview exactly what would be injected without updating usage counters:
+
+```bash
+codex-memory inject-preview "fix auth regression" --budget 4000 --json
+codex-memory preview "fix auth regression"
+```
+
+Optimize context for a task and inspect selected tokens, skipped tokens,
+dedupe savings, stale skips, conflicts, and budget warnings:
+
+```bash
+codex-memory optimize-context "fix auth regression" --budget 6000 --strategy balanced
+codex-memory optimize-context "release review" --strategy safety-first --json
+```
+
+Operational views for agents and humans:
+
+```bash
+codex-memory stats --project my-repo --since 7d --json
+codex-memory stats --impact
+codex-memory explain-memory mem_abc123
+codex-memory health --json
+codex-memory status --memory-mode
+codex-memory diff HEAD~1
+codex-memory dashboard --summary
+codex-memory risk-map
+codex-memory audit-session session_123
+```
+
+Cleanup and lifecycle commands default to dry-run unless `--yes` is passed:
+
+```bash
+codex-memory prune --stale 90d
+codex-memory compact --max-tokens 800
+codex-memory dedupe
+codex-memory pin mem_abc123
+codex-memory never-inject mem_abc123
+codex-memory mark-stale mem_abc123
+codex-memory promote mem_abc123 --to AGENTS.md
+```
+
 ## Current Status
 
 Supported:

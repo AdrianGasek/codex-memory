@@ -13,6 +13,7 @@ from app.core.models import (
     ConfidenceRecalculationResponse,
     ConsolidationResponse,
     CompactMemoryResult,
+    InjectPreviewResponse,
     InjectResponse,
     InjectionTrace,
     MarkdownImportRequest,
@@ -22,6 +23,8 @@ from app.core.models import (
     MemoryEntry,
     MemoryHistoryEntry,
     MemoryLinkResponse,
+    MemoryExplanationResponse,
+    MemoryStatsResponse,
     MemoryUpdate,
     PromotedBestPracticeResponse,
     RepeatedErrorResponse,
@@ -178,9 +181,33 @@ def inject_memory(
     return InjectResponse(additional_context=additional_context, results=results, trace=trace)
 
 
+@router.get("/inject-preview", response_model=InjectPreviewResponse)
+def inject_preview(
+    query: str = "",
+    limit: int | None = Query(default=None, ge=1, le=20),
+    profile: RetrievalProfile = "normal",
+    token_budget: int | None = Query(default=None, ge=100, le=8000),
+) -> InjectPreviewResponse:
+    settings = get_settings()
+    profile_limit = INJECT_PROFILE_LIMITS[profile] or settings.inject_limit
+    return get_store().preview_injection(
+        query=query,
+        limit=limit or profile_limit,
+        token_budget=token_budget or settings.token_budget,
+    )
+
+
 @router.get("/debug/injection", response_model=InjectionTrace | None)
 def latest_injection_trace() -> InjectionTrace | None:
     return get_store().latest_injection_trace()
+
+
+@router.get("/explain/{memory_id}", response_model=MemoryExplanationResponse)
+def explain_memory(memory_id: str) -> MemoryExplanationResponse:
+    explanation = get_store().explain_memory(memory_id)
+    if not explanation:
+        raise HTTPException(status_code=404, detail="Memory entry not found")
+    return explanation
 
 
 @router.get("/debug/search", response_model=SearchDebugResponse)
@@ -214,6 +241,18 @@ def search_ranking_debug(
 @router.get("/metadata")
 def memory_metadata() -> dict[str, str]:
     return get_store().metadata()
+
+
+@router.get("/stats", response_model=MemoryStatsResponse)
+def memory_stats(
+    project: str | None = None,
+    since: str | None = None,
+    impact: bool = False,
+) -> MemoryStatsResponse:
+    try:
+        return get_store().stats(project=project, since=since, include_impact=impact)
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=f"Invalid stats filter: {error}") from error
 
 
 @router.get("/config/diagnostics")
