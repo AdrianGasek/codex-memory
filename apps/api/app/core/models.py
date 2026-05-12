@@ -192,6 +192,38 @@ class InjectResponse(BaseModel):
     trace: InjectionTrace | None = None
 
 
+class InjectionPreviewSelected(BaseModel):
+    id: str
+    type: MemoryType
+    title: str
+    tokens: int
+    relevance: float
+    reason: str
+    mode: Literal["full", "summary"]
+    file_paths: list[str] = Field(default_factory=list)
+    tags: list[str] = Field(default_factory=list)
+
+
+class InjectionPreviewExcluded(BaseModel):
+    id: str
+    type: MemoryType
+    title: str
+    tokens: int
+    relevance: float
+    reason: str
+
+
+class InjectPreviewResponse(BaseModel):
+    task: str
+    token_budget: int
+    candidate_count: int
+    selected_context: list[InjectionPreviewSelected]
+    excluded_context: list[InjectionPreviewExcluded]
+    selected_estimated_tokens: int
+    total_estimated_tokens: int
+    additional_context: str
+
+
 class RepeatedError(BaseModel):
     key: str
     title: str

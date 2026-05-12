@@ -13,6 +13,7 @@ from app.core.models import (
     ConfidenceRecalculationResponse,
     ConsolidationResponse,
     CompactMemoryResult,
+    InjectPreviewResponse,
     InjectResponse,
     InjectionTrace,
     MarkdownImportRequest,
@@ -176,6 +177,22 @@ def inject_memory(
         token_budget=token_budget or settings.token_budget,
     )
     return InjectResponse(additional_context=additional_context, results=results, trace=trace)
+
+
+@router.get("/inject-preview", response_model=InjectPreviewResponse)
+def inject_preview(
+    query: str = "",
+    limit: int | None = Query(default=None, ge=1, le=20),
+    profile: RetrievalProfile = "normal",
+    token_budget: int | None = Query(default=None, ge=100, le=8000),
+) -> InjectPreviewResponse:
+    settings = get_settings()
+    profile_limit = INJECT_PROFILE_LIMITS[profile] or settings.inject_limit
+    return get_store().preview_injection(
+        query=query,
+        limit=limit or profile_limit,
+        token_budget=token_budget or settings.token_budget,
+    )
 
 
 @router.get("/debug/injection", response_model=InjectionTrace | None)

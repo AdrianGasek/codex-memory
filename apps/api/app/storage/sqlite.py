@@ -19,8 +19,11 @@ from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 
 from app.core.models import (
     AntiPattern,
+    InjectPreviewResponse,
     InjectionTrace,
     InjectionTraceEntry,
+    InjectionPreviewExcluded,
+    InjectionPreviewSelected,
     MemoryAuditEntry,
     MemoryCreate,
     MemoryEntry,
@@ -624,20 +627,67 @@ class MemoryStore:
             trace = self._record_injection_trace(query, limit, token_budget, [], 0)
             return "", [], trace
 
+        additional_context, injected_results = self._build_injection_context(results, token_budget)
+        self._record_usage(injected_results, retrieved_delta=0, injected_delta=1)
+        trace = self._record_injection_trace(query, limit, token_budget, injected_results, len(results))
+        return additional_context, results, trace
+
+    def preview_injection(self, query: str, limit: int, token_budget: int) -> InjectPreviewResponse:
+        results = self.search(query=query, limit=limit, track_usage=False)
+        additional_context, injected_results = self._build_injection_context(results, token_budget)
+        injected_ids = {result.entry.id for result in injected_results}
+        mode_by_id = {
+            result.entry.id: "summary" if "summarized due to token budget" in result.reason else "full"
+            for result in injected_results
+        }
+        selected_context = [
+            InjectionPreviewSelected(
+                id=result.entry.id,
+                type=result.entry.type,
+                title=result.entry.title,
+                tokens=self._estimate_tokens(self._preview_text_for_result(result, mode_by_id[result.entry.id])),
+                relevance=result.score,
+                reason=result.reason,
+                mode=mode_by_id[result.entry.id],
+                file_paths=result.entry.file_paths,
+                tags=result.entry.tags,
+            )
+            for result in injected_results
+        ]
+        excluded_context = [
+            InjectionPreviewExcluded(
+                id=result.entry.id,
+                type=result.entry.type,
+                title=result.entry.title,
+                tokens=self._estimate_tokens(self._format_full_result(result)),
+                relevance=result.score,
+                reason="Skipped because the token budget was exhausted.",
+            )
+            for result in results
+            if result.entry.id not in injected_ids
+        ]
+        return InjectPreviewResponse(
+            task=self._redact_text(query),
+            token_budget=token_budget,
+            candidate_count=len(results),
+            selected_context=selected_context,
+            excluded_context=excluded_context,
+            selected_estimated_tokens=sum(item.tokens for item in selected_context),
+            total_estimated_tokens=sum(self._estimate_tokens(self._format_full_result(result)) for result in results),
+            additional_context=additional_context,
+        )
+
+    def _build_injection_context(
+        self,
+        results: list[SearchResult],
+        token_budget: int,
+    ) -> tuple[str, list[SearchResult]]:
         lines = ["# Relevant Codex-Mem Context", ""]
         budget_chars = max(token_budget * 4, 400)
-        injected_results = []
+        injected_results: list[SearchResult] = []
         summarized = False
         for result in results:
-            entry = result.entry
-            block = [
-                f"- [{entry.type.value}] {entry.title} ({entry.id}, score={result.score:.2f})",
-                f"  Context: {entry.context}" if entry.context else "",
-                f"  Resolution: {entry.resolution}" if entry.resolution else "",
-                f"  Files: {', '.join(entry.file_paths)}" if entry.file_paths else "",
-                f"  Tags: {', '.join(entry.tags)}" if entry.tags else "",
-            ]
-            candidate = "\n".join(part for part in block if part)
+            candidate = self._format_full_result(result)
             if len("\n".join(lines)) + len(candidate) > budget_chars:
                 summary = self._summary_for_result(result)
                 if not summarized and len("\n".join(lines)) + len("\n# Summarized Memory\n") <= budget_chars:
@@ -658,9 +708,7 @@ class MemoryStore:
             injected_results.append(
                 SearchResult(entry=result.entry, score=result.score, reason=f"{result.reason}; full context injected")
             )
-        self._record_usage(injected_results, retrieved_delta=0, injected_delta=1)
-        trace = self._record_injection_trace(query, limit, token_budget, injected_results, len(results))
-        return "\n".join(lines).strip(), results, trace
+        return "\n".join(lines).strip(), injected_results
 
     def latest_injection_trace(self) -> InjectionTrace | None:
         with self._connect() as conn:
@@ -963,6 +1011,25 @@ class MemoryStore:
         if len(summary) > 140:
             summary = summary[:137].rstrip() + "..."
         return f"- [{entry.type.value}] {entry.title}: {summary} ({entry.id}, score={result.score:.2f})"
+
+    def _format_full_result(self, result: SearchResult) -> str:
+        entry = result.entry
+        block = [
+            f"- [{entry.type.value}] {entry.title} ({entry.id}, score={result.score:.2f})",
+            f"  Context: {entry.context}" if entry.context else "",
+            f"  Resolution: {entry.resolution}" if entry.resolution else "",
+            f"  Files: {', '.join(entry.file_paths)}" if entry.file_paths else "",
+            f"  Tags: {', '.join(entry.tags)}" if entry.tags else "",
+        ]
+        return "\n".join(part for part in block if part)
+
+    def _preview_text_for_result(self, result: SearchResult, mode: str) -> str:
+        if mode == "summary":
+            return self._summary_for_result(result)
+        return self._format_full_result(result)
+
+    def _estimate_tokens(self, text: str) -> int:
+        return max(1, (len(text) + 3) // 4) if text else 0
 
     def export_markdown(self) -> None:
         results = self.search(limit=500, track_usage=False)

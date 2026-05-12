@@ -35,6 +35,38 @@ export interface SearchResult {
   reason: string;
 }
 
+export interface InjectionPreviewSelected {
+  id: string;
+  type: MemoryType;
+  title: string;
+  tokens: number;
+  relevance: number;
+  reason: string;
+  mode: "full" | "summary";
+  file_paths: string[];
+  tags: string[];
+}
+
+export interface InjectionPreviewExcluded {
+  id: string;
+  type: MemoryType;
+  title: string;
+  tokens: number;
+  relevance: number;
+  reason: string;
+}
+
+export interface InjectionPreview {
+  task: string;
+  token_budget: number;
+  candidate_count: number;
+  selected_context: InjectionPreviewSelected[];
+  excluded_context: InjectionPreviewExcluded[];
+  selected_estimated_tokens: number;
+  total_estimated_tokens: number;
+  additional_context: string;
+}
+
 export interface ConfigDiagnostics {
   config_path: string;
   diagnostics: string[];
@@ -111,6 +143,19 @@ export class MemoryClient {
       `/memory/inject?${params}`,
     );
     return response.additional_context;
+  }
+
+  async injectPreview(
+    query: string,
+    limit?: number,
+    profile?: RetrievalProfile,
+    tokenBudget?: number,
+  ): Promise<InjectionPreview> {
+    const params = new URLSearchParams({ query });
+    if (limit) params.set("limit", String(limit));
+    if (profile) params.set("profile", profile);
+    if (tokenBudget) params.set("token_budget", String(tokenBudget));
+    return this.request(`/memory/inject-preview?${params}`);
   }
 
   private async request<T>(path: string, init: RequestInit = {}): Promise<T> {

@@ -18,6 +18,7 @@ This is the working checklist for turning Codex-Mem into a full "brain" for Code
 - [x] Add memory history/versioning so updates are auditable.
 - [x] Add conflict detection and latest-wins resolution.
 - [x] Add observability for "what was injected and why".
+- [x] Add side-effect-free `inject-preview` API and CLI reporting for context budgets.
 
 ## 1. Foundation And Project Setup
 

@@ -1416,6 +1416,44 @@ def test_injection_summarizes_memories_when_budget_is_tight(tmp_path):
     assert len(additional_context) <= 450
 
 
+def test_injection_preview_reports_budget_without_usage_side_effects(tmp_path, monkeypatch):
+    store = MemoryStore(
+        db_path=tmp_path / "db" / "codex-mem.sqlite3",
+        codex_dir=tmp_path / ".codex",
+        default_project="tests",
+    )
+    monkeypatch.setattr(memory, "get_store", lambda: store)
+    entry = store.store(
+        MemoryCreate(
+            type="decision",
+            title="Preview memory injection decisions",
+            context="Preview should explain what context would be injected.",
+            resolution="Do not increment usage counters during preview.",
+            source="test",
+        )
+    )
+
+    client = TestClient(app)
+    response = client.get(
+        "/memory/inject-preview",
+        params={"query": "preview injection", "limit": 1, "token_budget": 500},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["task"] == "preview injection"
+    assert body["token_budget"] == 500
+    assert body["selected_context"][0]["id"] == entry.id
+    assert body["selected_context"][0]["tokens"] > 0
+    assert body["selected_estimated_tokens"] <= body["total_estimated_tokens"]
+    assert "Preview memory injection decisions" in body["additional_context"]
+    unchanged = store.get(entry.id)
+    assert unchanged is not None
+    assert unchanged.retrieved_count == 0
+    assert unchanged.injected_count == 0
+    assert store.latest_injection_trace() is None
+
+
 def test_progressive_disclosure_index_and_get_by_id(tmp_path, monkeypatch):
     store = MemoryStore(
         db_path=tmp_path / "db" / "codex-mem.sqlite3",

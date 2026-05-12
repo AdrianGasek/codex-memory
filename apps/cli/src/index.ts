@@ -5,6 +5,7 @@ import { devCommand } from "./commands/dev.js";
 import { doctorCommand } from "./commands/doctor.js";
 import { getCommand } from "./commands/get.js";
 import { hookCommand } from "./commands/hook.js";
+import { injectPreviewCommand } from "./commands/injectPreview.js";
 import { installCommand } from "./commands/install.js";
 import { queryCommand } from "./commands/query.js";
 import { rememberCommand } from "./commands/remember.js";
@@ -46,6 +47,10 @@ export async function runCommand(
       return;
     case "debug":
       await debugCommand(args);
+      return;
+    case "inject-preview":
+    case "preview":
+      await injectPreviewCommand(args);
       return;
     case "doctor":
       await doctorCommand();
@@ -99,6 +104,7 @@ Commands:
   update <id> --title "..." --tag infra
   get <id>
   query "search terms" --profile short
+  inject-preview "current task" --budget 4000 --json
   debug --query "current task" --profile deep
   dev doctor
   doctor
