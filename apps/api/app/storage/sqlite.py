@@ -24,6 +24,10 @@ from app.core.models import (
     InjectionTraceEntry,
     InjectionPreviewExcluded,
     InjectionPreviewSelected,
+    MemoryStatsImpact,
+    MemoryStatsResponse,
+    MemoryExplanationResponse,
+    MemoryTypeStat,
     MemoryAuditEntry,
     MemoryCreate,
     MemoryEntry,
@@ -31,6 +35,7 @@ from app.core.models import (
     MemoryLink,
     MemoryUpdate,
     RepeatedError,
+    RecalledFileStat,
     ReusedSolution,
     SearchDebugResult,
     SearchResult,
@@ -651,6 +656,7 @@ class MemoryStore:
                 mode=mode_by_id[result.entry.id],
                 file_paths=result.entry.file_paths,
                 tags=result.entry.tags,
+                evidence=self._evidence_for_result(result),
             )
             for result in injected_results
         ]
@@ -662,6 +668,7 @@ class MemoryStore:
                 tokens=self._estimate_tokens(self._format_full_result(result)),
                 relevance=result.score,
                 reason="Skipped because the token budget was exhausted.",
+                evidence=self._evidence_for_result(result),
             )
             for result in results
             if result.entry.id not in injected_ids
@@ -675,6 +682,38 @@ class MemoryStore:
             selected_estimated_tokens=sum(item.tokens for item in selected_context),
             total_estimated_tokens=sum(self._estimate_tokens(self._format_full_result(result)) for result in results),
             additional_context=additional_context,
+        )
+
+    def explain_memory(self, memory_id: str) -> MemoryExplanationResponse | None:
+        entry = self.get(memory_id)
+        if not entry:
+            return None
+        query_terms = sorted(
+            {
+                term.strip(".,;:()[]{}'\"`").lower()
+                for term in f"{entry.title} {' '.join(entry.tags)} {' '.join(entry.file_paths)}".split()
+                if len(term.strip(".,;:()[]{}'\"`")) >= 3
+            }
+        )
+        signals = []
+        if entry.status != "active":
+            signals.append(f"status={entry.status}")
+        if entry.superseded_by:
+            signals.append(f"superseded_by={entry.superseded_by}")
+        if entry.conflict_ids:
+            signals.append(f"conflicts={','.join(sorted(entry.conflict_ids))}")
+        return MemoryExplanationResponse(
+            id=entry.id,
+            ranking_reason=self._redact_text(
+                f"{entry.type.value} memory with confidence {entry.confidence:.2f}, importance {entry.importance:.2f}, and {entry.retrieved_count + entry.injected_count} recorded uses."
+            ),
+            matching_query_terms=[self._redact_text(term) for term in query_terms],
+            file_path_evidence=[self._redact_text(path) for path in entry.file_paths],
+            usage_evidence=[
+                f"retrieved_count={entry.retrieved_count}",
+                f"injected_count={entry.injected_count}",
+            ],
+            conflict_staleness_signals=signals,
         )
 
     def _build_injection_context(
@@ -710,6 +749,12 @@ class MemoryStore:
             )
         return "\n".join(lines).strip(), injected_results
 
+    def _evidence_for_result(self, result: SearchResult) -> list[str]:
+        evidence = [self._redact_text(result.reason)]
+        evidence.extend(self._redact_text(path) for path in result.entry.file_paths)
+        evidence.extend(f"tag:{self._redact_text(tag)}" for tag in result.entry.tags)
+        return evidence
+
     def latest_injection_trace(self) -> InjectionTrace | None:
         with self._connect() as conn:
             row = conn.execute(
@@ -723,10 +768,132 @@ class MemoryStore:
             return None
         return self._trace_from_row(row)
 
+    def stats(
+        self,
+        project: str | None = None,
+        since: str | None = None,
+        include_impact: bool = False,
+    ) -> MemoryStatsResponse:
+        since_filter = self._normalize_since_filter(since) if since else None
+        traces = self._stats_traces(project=project, since=since_filter)
+        trace_tokens = [self._estimate_trace_tokens(trace) for trace in traces]
+        impact = None
+        if include_impact:
+            impact = MemoryStatsImpact(
+                memory_assisted_sessions=sum(1 for trace in traces if trace.injected_count > 0),
+                boundary_warnings=sum(1 for trace in traces if trace.injected_count < trace.candidate_count),
+                repeated_bug_reuse=self._repeated_bug_reuse(project=project, since=since_filter),
+                average_context_size=round(sum(trace_tokens) / len(trace_tokens)) if trace_tokens else 0,
+            )
+        return MemoryStatsResponse(
+            calls_by_command={"inject": len(traces)} if traces else {},
+            total_injected_memories=sum(trace.injected_count for trace in traces),
+            average_injected_tokens=round(sum(trace_tokens) / len(trace_tokens)) if trace_tokens else 0,
+            max_injected_tokens=max(trace_tokens) if trace_tokens else 0,
+            skipped_due_to_budget=sum(max(0, trace.candidate_count - trace.injected_count) for trace in traces),
+            most_recalled_files=self._most_recalled_files(project=project, since=since_filter),
+            most_used_memory_types=self._most_used_memory_types(project=project, since=since_filter),
+            impact=impact,
+        )
+
     def metadata(self) -> dict[str, str]:
         with self._connect() as conn:
             rows = conn.execute("SELECT key, value FROM memory_metadata ORDER BY key").fetchall()
         return {row["key"]: row["value"] for row in rows}
+
+    def _stats_traces(self, project: str | None, since: str | None) -> list[InjectionTrace]:
+        sql = "SELECT * FROM injection_traces"
+        params: list[str] = []
+        if since:
+            sql += " WHERE timestamp >= ?"
+            params.append(since)
+        sql += " ORDER BY timestamp DESC"
+        with self._connect() as conn:
+            rows = conn.execute(sql, params).fetchall()
+        traces = [self._trace_from_row(row) for row in rows]
+        if not project:
+            return traces
+        allowed_ids = self._memory_ids_for_project(project)
+        return [
+            trace
+            for trace in traces
+            if any(entry.memory_id in allowed_ids for entry in trace.entries)
+        ]
+
+    def _memory_ids_for_project(self, project: str) -> set[str]:
+        with self._connect() as conn:
+            rows = conn.execute("SELECT id FROM memories WHERE project = ?", (project,)).fetchall()
+        return {row["id"] for row in rows}
+
+    def _estimate_trace_tokens(self, trace: InjectionTrace) -> int:
+        text = "\n".join(f"{entry.title} {entry.reason}" for entry in trace.entries)
+        return self._estimate_tokens(text)
+
+    def _most_recalled_files(self, project: str | None, since: str | None) -> list[RecalledFileStat]:
+        rows = self._stats_memory_rows(project=project, since=since)
+        counts: dict[str, int] = {}
+        for row in rows:
+            uses = int(row["retrieved_count"]) + int(row["injected_count"])
+            if uses <= 0:
+                continue
+            for file_path in json.loads(row["file_paths"]):
+                counts[file_path] = counts.get(file_path, 0) + uses
+        return [
+            RecalledFileStat(file_path=file_path, count=count)
+            for file_path, count in sorted(counts.items(), key=lambda item: (-item[1], item[0]))[:10]
+        ]
+
+    def _most_used_memory_types(self, project: str | None, since: str | None) -> list[MemoryTypeStat]:
+        rows = self._stats_memory_rows(project=project, since=since)
+        counts: dict[str, int] = {}
+        for row in rows:
+            uses = int(row["retrieved_count"]) + int(row["injected_count"])
+            if uses <= 0:
+                continue
+            counts[row["type"]] = counts.get(row["type"], 0) + uses
+        return [
+            MemoryTypeStat(type=memory_type, count=count)
+            for memory_type, count in sorted(counts.items(), key=lambda item: (-item[1], item[0]))[:10]
+        ]
+
+    def _repeated_bug_reuse(self, project: str | None, since: str | None) -> int:
+        rows = self._stats_memory_rows(project=project, since=since, memory_type="bug")
+        return sum(1 for row in rows if int(row["retrieved_count"]) + int(row["injected_count"]) > 1)
+
+    def _stats_memory_rows(
+        self,
+        project: str | None,
+        since: str | None,
+        memory_type: str | None = None,
+    ) -> list[sqlite3.Row]:
+        where = ["status = 'active'"]
+        params: list[str] = []
+        if project:
+            where.append("project = ?")
+            params.append(project)
+        if since:
+            where.append("(last_used_timestamp >= ? OR timestamp >= ?)")
+            params.extend([since, since])
+        if memory_type:
+            where.append("type = ?")
+            params.append(memory_type)
+        sql = "SELECT * FROM memories WHERE " + " AND ".join(where)
+        with self._connect() as conn:
+            return conn.execute(sql, params).fetchall()
+
+    def _normalize_since_filter(self, value: str) -> str:
+        match = re.fullmatch(r"(\d+)([dhm])", value.strip().lower())
+        if match:
+            amount = int(match.group(1))
+            unit = match.group(2)
+            if unit == "d":
+                delta = timedelta(days=amount)
+            elif unit == "h":
+                delta = timedelta(hours=amount)
+            else:
+                delta = timedelta(minutes=amount)
+            return (datetime.now(timezone.utc) - delta).isoformat()
+        return self._normalize_timestamp_filter(value)
 
     def repeated_errors(
         self,

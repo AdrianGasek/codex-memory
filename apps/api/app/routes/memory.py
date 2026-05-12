@@ -23,6 +23,8 @@ from app.core.models import (
     MemoryEntry,
     MemoryHistoryEntry,
     MemoryLinkResponse,
+    MemoryExplanationResponse,
+    MemoryStatsResponse,
     MemoryUpdate,
     PromotedBestPracticeResponse,
     RepeatedErrorResponse,
@@ -200,6 +202,14 @@ def latest_injection_trace() -> InjectionTrace | None:
     return get_store().latest_injection_trace()
 
 
+@router.get("/explain/{memory_id}", response_model=MemoryExplanationResponse)
+def explain_memory(memory_id: str) -> MemoryExplanationResponse:
+    explanation = get_store().explain_memory(memory_id)
+    if not explanation:
+        raise HTTPException(status_code=404, detail="Memory entry not found")
+    return explanation
+
+
 @router.get("/debug/search", response_model=SearchDebugResponse)
 def search_ranking_debug(
     query: str = "",
@@ -231,6 +241,18 @@ def search_ranking_debug(
 @router.get("/metadata")
 def memory_metadata() -> dict[str, str]:
     return get_store().metadata()
+
+
+@router.get("/stats", response_model=MemoryStatsResponse)
+def memory_stats(
+    project: str | None = None,
+    since: str | None = None,
+    impact: bool = False,
+) -> MemoryStatsResponse:
+    try:
+        return get_store().stats(project=project, since=since, include_impact=impact)
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=f"Invalid stats filter: {error}") from error
 
 
 @router.get("/config/diagnostics")

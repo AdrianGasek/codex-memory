@@ -2269,6 +2269,69 @@ def test_config_diagnostics_endpoint(monkeypatch):
     assert response.json()["diagnostics"] == ["Config key 'inject_limit' must be at least 1; using 5."]
 
 
+def test_memory_stats_endpoint_reports_usage_metrics(tmp_path, monkeypatch):
+    store = MemoryStore(
+        db_path=tmp_path / "db" / "codex-mem.sqlite3",
+        codex_dir=tmp_path / ".codex",
+        default_project="tests",
+    )
+    monkeypatch.setattr(memory, "get_store", lambda: store)
+    store.store(
+        MemoryCreate(
+            type="bug",
+            title="Auth regression",
+            context="Authentication failed after refactor.",
+            resolution="Reuse the validated auth fixture.",
+            file_paths=["src/auth.ts"],
+            source="test",
+        )
+    )
+    store.inject_context(query="auth regression", limit=1, token_budget=500)
+
+    client = TestClient(app)
+    response = client.get("/memory/stats", params={"project": "tests", "impact": "true"})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["calls_by_command"]["inject"] == 1
+    assert body["total_injected_memories"] == 1
+    assert body["average_injected_tokens"] > 0
+    assert body["max_injected_tokens"] >= body["average_injected_tokens"]
+    assert body["skipped_due_to_budget"] == 0
+    assert body["most_recalled_files"] == [{"file_path": "src/auth.ts", "count": 2}]
+    assert body["most_used_memory_types"] == [{"type": "bug", "count": 2}]
+    assert body["impact"]["memory_assisted_sessions"] == 1
+
+
+def test_explain_memory_is_deterministic_and_redacts_secrets(tmp_path, monkeypatch):
+    store = MemoryStore(
+        db_path=tmp_path / "db" / "codex-mem.sqlite3",
+        codex_dir=tmp_path / ".codex",
+        default_project="tests",
+    )
+    monkeypatch.setattr(memory, "get_store", lambda: store)
+    entry = store.store(
+        MemoryCreate(
+            type="decision",
+            title="Do not expose token=secret-value",
+            context="Use src/auth.ts for auth.",
+            file_paths=["src/auth.ts"],
+            tags=["auth"],
+            source="test",
+        )
+    )
+
+    client = TestClient(app)
+    first = client.get(f"/memory/explain/{entry.id}")
+    second = client.get(f"/memory/explain/{entry.id}")
+
+    assert first.status_code == 200
+    assert first.json() == second.json()
+    body_text = json.dumps(first.json())
+    assert "secret-value" not in body_text
+    assert "src/auth.ts" in first.json()["file_path_evidence"]
+
+
 def test_local_memory_viewer_is_served():
     client = TestClient(app)
     response = client.get("/memory/viewer")

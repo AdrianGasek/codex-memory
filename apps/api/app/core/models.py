@@ -202,6 +202,7 @@ class InjectionPreviewSelected(BaseModel):
     mode: Literal["full", "summary"]
     file_paths: list[str] = Field(default_factory=list)
     tags: list[str] = Field(default_factory=list)
+    evidence: list[str] = Field(default_factory=list)
 
 
 class InjectionPreviewExcluded(BaseModel):
@@ -211,6 +212,7 @@ class InjectionPreviewExcluded(BaseModel):
     tokens: int
     relevance: float
     reason: str
+    evidence: list[str] = Field(default_factory=list)
 
 
 class InjectPreviewResponse(BaseModel):
@@ -222,6 +224,43 @@ class InjectPreviewResponse(BaseModel):
     selected_estimated_tokens: int
     total_estimated_tokens: int
     additional_context: str
+
+
+class MemoryStatsImpact(BaseModel):
+    memory_assisted_sessions: int = 0
+    boundary_warnings: int = 0
+    repeated_bug_reuse: int = 0
+    average_context_size: int = 0
+
+
+class RecalledFileStat(BaseModel):
+    file_path: str
+    count: int
+
+
+class MemoryTypeStat(BaseModel):
+    type: MemoryType
+    count: int
+
+
+class MemoryStatsResponse(BaseModel):
+    calls_by_command: dict[str, int] = Field(default_factory=dict)
+    total_injected_memories: int = 0
+    average_injected_tokens: int = 0
+    max_injected_tokens: int = 0
+    skipped_due_to_budget: int = 0
+    most_recalled_files: list[RecalledFileStat] = Field(default_factory=list)
+    most_used_memory_types: list[MemoryTypeStat] = Field(default_factory=list)
+    impact: MemoryStatsImpact | None = None
+
+
+class MemoryExplanationResponse(BaseModel):
+    id: str
+    ranking_reason: str
+    matching_query_terms: list[str] = Field(default_factory=list)
+    file_path_evidence: list[str] = Field(default_factory=list)
+    usage_evidence: list[str] = Field(default_factory=list)
+    conflict_staleness_signals: list[str] = Field(default_factory=list)
 
 
 class RepeatedError(BaseModel):

@@ -2,6 +2,14 @@
 
 All notable changes to Codex-Mem are documented here.
 
+## Unreleased
+
+- Added context injection preview and token budget optimizer commands with JSON output.
+- Added memory stats, impact reporting, explanation, health, memory-mode status,
+  dashboard summary, risk map, session audit, cleanup, and memory lifecycle commands.
+- Added API and CLI coverage for stats, explanations, preview evidence, health,
+  and optimizer strategy behavior.
+
 ## 1.0.9 - 2026-05-09
 
 - Replaced the README logo image with the `new_gh_banner.png` banner in both

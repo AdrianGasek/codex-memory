@@ -45,6 +45,7 @@ export interface InjectionPreviewSelected {
   mode: "full" | "summary";
   file_paths: string[];
   tags: string[];
+  evidence?: string[];
 }
 
 export interface InjectionPreviewExcluded {
@@ -54,6 +55,7 @@ export interface InjectionPreviewExcluded {
   tokens: number;
   relevance: number;
   reason: string;
+  evidence?: string[];
 }
 
 export interface InjectionPreview {
@@ -74,6 +76,39 @@ export interface ConfigDiagnostics {
   inject_limit: number;
   token_budget: number;
   vector_backend: string;
+}
+
+export interface MemoryStats {
+  calls_by_command: Record<string, number>;
+  total_injected_memories: number;
+  average_injected_tokens: number;
+  max_injected_tokens: number;
+  skipped_due_to_budget: number;
+  most_recalled_files: { file_path: string; count: number }[];
+  most_used_memory_types: { type: MemoryType; count: number }[];
+  impact?: {
+    memory_assisted_sessions: number;
+    boundary_warnings: number;
+    repeated_bug_reuse: number;
+    average_context_size: number;
+  };
+}
+
+export interface MemoryExplanation {
+  id: string;
+  ranking_reason: string;
+  matching_query_terms: string[];
+  file_path_evidence: string[];
+  usage_evidence: string[];
+  conflict_staleness_signals: string[];
+}
+
+export interface MemoryHealth {
+  status: string;
+  components: { name: string; status: string; detail: string }[];
+  config?: Record<string, unknown>;
+  cleanup_recommendations?: string[];
+  index_state?: string;
 }
 
 export class MemoryClient {
@@ -156,6 +191,27 @@ export class MemoryClient {
     if (profile) params.set("profile", profile);
     if (tokenBudget) params.set("token_budget", String(tokenBudget));
     return this.request(`/memory/inject-preview?${params}`);
+  }
+
+  async stats(
+    project?: string,
+    since?: string,
+    impact?: boolean,
+  ): Promise<MemoryStats> {
+    const params = new URLSearchParams();
+    if (project) params.set("project", project);
+    if (since) params.set("since", since);
+    if (impact) params.set("impact", "true");
+    const suffix = params.size ? `?${params}` : "";
+    return this.request(`/memory/stats${suffix}`);
+  }
+
+  async explainMemory(id: string): Promise<MemoryExplanation> {
+    return this.request(`/memory/explain/${encodeURIComponent(id)}`);
+  }
+
+  async memoryHealth(): Promise<MemoryHealth> {
+    return this.request("/memory/health/diagnostics");
   }
 
   private async request<T>(path: string, init: RequestInit = {}): Promise<T> {
